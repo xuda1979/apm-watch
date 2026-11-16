@@ -204,18 +204,24 @@ export function exportStatus(store, config) {
   for (const [target, rows] of byTarget) {
     const http = rows.find((r) => r.kind === 'http');
     const tls = rows.find((r) => r.kind === 'tls');
+    const apm = rows.find((r) => r.kind === 'apm');
     targets.push({
       target,
       status: aggStatus(rows.map((r) => r.status)),
       http: http ? { status: http.status, latency_ms: http.latency_ms, detail: http.detail, ts: http.ts } : null,
       tls: tls ? { status: tls.status, detail: tls.detail, ts: tls.ts } : null,
+      apm: apm ? { status: apm.status, latency_ms: apm.latency_ms, detail: apm.detail, ts: apm.ts } : null,
     });
   }
   const now = Date.now();
+  const statuses = targets.map((t) => t.status);
+  const counts = { ok: 0, warn: 0, error: 0, unknown: 0 };
+  for (const s of statuses) counts[s] = (counts[s] ?? 0) + 1;
   return {
     generated_at: new Date(now).toISOString(),
     generated_ts: now,
     apm_watch_version: VERSION,
+    summary: { overall: aggStatus(statuses), counts },
     targets,
   };
 }
