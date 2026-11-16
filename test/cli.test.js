@@ -425,6 +425,79 @@ test('cli: demo agent feeds the run monitor and its apm state surfaces over web'
   assert.match(demoOut, /agent → \d+ms/, `demo agent logged a successful post:\n${demoOut}`);
 });
 
+test('cli: a run monitor checks all three kinds (http/tls/apm) through one spawned process', async (t) => {
+  const { startHttpServer: httpSrv, startHttpsServer: httpsSrv } = await import('./helpers/fixtures.js');
+  const http = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(http.close);
+  const https = await httpsSrv({ days: 15 });   // expires soon -> tls warn
+  t.after(https.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'all.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: http.url + '/ok', assert: { statusCode: 200 } }],
+    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: https.port, rejectUnauthorized: false, warnDaysBefore: 30 }],
+    apm: { collect: true, errorRateThreshold: 0.05 },
+    store: { path: path.join(dir, 'all.db') },
+    notifications: { desktop: false },
+  }));
+
+  // one `run` process hosts the scheduler grid for all three check kinds at once
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'web', '--ui-port', '0'], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`run did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // the demo agent feeds the apm collector through the spawned monitor's port
+  const demo = spawn(process.execPath, [BIN, 'demo', '--collect-addr', `http://127.0.0.1:${port}/apm/agent/trace`, '--interval', '150'], { cwd: path.dirname(BIN) });
+  demo.stderr.on('data', (d) => (stderr += d));
+  t.after(() => demo.kill('SIGTERM'));
+
+  // wait until scheduler ticks have landed for all three kinds (apm:summary
+  // fires ~1.5s in, tls initial delay up to 3s, http up to 2s)
+  let data = null;
+  for (let i = 0; i < 60 && !data; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+    const d = await res.json();
+    const kinds = new Set(d.states.map((s) => s.kind));
+    if (kinds.has('http') && kinds.has('tls') && kinds.has('apm')) data = d;
+    else await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.ok(data, `all three check kinds landed on the live API\nstderr:\n${stderr}`);
+
+  // http: ok with the asserted numeric status code
+  const h = data.states.find((s) => s.kind === 'http');
+  assert.equal(h.status, 'ok');
+  assert.equal(h.status_code, 200);
+
+  // tls: real cert scanned over TLS, expires in 15d -> warn inside threshold
+  const tlsSt = data.states.find((s) => s.kind === 'tls');
+  assert.equal(tlsSt.status, 'warn');
+  assert.equal(tlsSt.days_remaining, 15);
+
+  // apm: spans posted by the demo agent produced a numeric summary
+  const apmSt = data.states.find((s) => s.kind === 'apm');
+  assert.equal(apmSt.target, 'demo');
+  assert.ok(apmSt.samples >= 1, 'collector received spans from the spawned demo agent');
+  assert.ok(Number.isFinite(apmSt.p50_ms), 'p50_ms numeric when all three kinds run together');
+  assert.ok(Number.isFinite(apmSt.error_rate), 'error_rate numeric when all three kinds run together');
+
+  // monitor self-health reflects the mixed grid: the tls warn drags it to warn
+  assert.equal(data.health.status, 'warn', 'warn tls check propagates to monitor self-health');
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert.match(page, /apm-watch/);
+});
+
 test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
