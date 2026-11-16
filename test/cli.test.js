@@ -206,6 +206,83 @@ test('cli: once --json reports error status_code and exit_code 2', async (t) => 
   assert.match(down.detail, /expected status 200, got 404/);
 });
 
+test('cli: export prints a parseable status snapshot to stdout', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'exp.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'exp.db') },
+  }));
+  // seed the store through `once` (runs checks + persists health meta), then export it
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+  const { code, stdout } = await runCli('export', '--config', cfg);
+  assert.equal(code, 0, `stderr:\n${stdout}`);
+  const doc = JSON.parse(stdout);       // stdout is a single JSON document
+  assert.equal(doc.summary.overall, 'ok');
+  assert.equal(doc.summary.counts.ok, 1);
+  assert.ok(doc.health, 'monitor health meta persisted by the seeding run');
+  assert.equal(doc.health.status, 'ok');
+  assert.equal(doc.targets.length, 1);
+  assert.equal(doc.targets[0].target, 'ok-svc');
+  assert.equal(doc.targets[0].http.status, 'ok');
+  assert.ok(doc.generated_at, 'snapshot carries a generated_at timestamp');
+});
+
+test('cli: export --out file.json writes a json snapshot', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'exp.json');
+  const outFile = path.join(dir, 'status.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'exp.db') },
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+  const { code, stdout } = await runCli('export', '--config', cfg, '--out', outFile);
+  assert.equal(code, 0);
+  assert.match(stdout, /wrote .*status\.json \(json\)/);
+  const { readFileSync } = await import('node:fs');
+  const written = JSON.parse(readFileSync(outFile, 'utf8'));
+  assert.equal(written.summary.overall, 'ok');
+  assert.equal(written.targets[0].target, 'ok-svc');
+  assert.equal(written.apm_watch_version, '1.0.0');
+});
+
+test('cli: export --out file.html writes a self-contained status page', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'exp.json');
+  const outFile = path.join(dir, 'status.html');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'exp.db') },
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+  const { code, stdout } = await runCli('export', '--config', cfg, '--out', outFile);
+  assert.equal(code, 0);
+  assert.match(stdout, /wrote .*status\.html \(html\)/);
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(outFile, 'utf8');
+  assert.match(html, /^<!doctype html>/);
+  assert.match(html, /<title>apm-watch status<\/title>/);
+  assert.match(html, />ok-svc<\/td>/);
+  assert.match(html, /overall ok/);
+  assert.match(html, /apm-watch v1\.0\.0/);
+});
+
 test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
