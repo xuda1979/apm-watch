@@ -1,0 +1,382 @@
+================================================================================
+               APM-WATCH V1.0 软件设计说明书
+================================================================================
+（依据 GB/T 8567-2006《计算机软件文档编制规范》软件设计说明书(SDD)编制）
+
+版本：V1.0                          编制日期：2026年11月16日
+编制单位：xuda1979
+适用范围：APM-WATCH（APM 接口可用性与证书监控软件）
+
+目录
+  1  引言
+    1.1 编写目的
+    1.2 项目背景
+    1.3 术语定义
+  2  总体设计
+    2.1 系统结构
+    2.2 模块划分
+    2.3 接口设计
+    2.4 数据库设计
+  3  详细设计
+    3.1 检查引擎模块
+    3.2 调度模块
+    3.3 存储模块
+    3.4 APM 采集模块
+    3.5 告警与通知模块
+    3.6 界面模块
+    3.7 导出模块
+    3.8 关键数据结构设计
+    3.9 关键流程设计
+================================================================================
+
+1  引言
+
+1.1 编写目的
+
+本说明书描述 APM-WATCH V1.0 的总体结构与详细设计，供开发、测试、维护人员
+以及软件著作权登记审查使用。本文档是理解软件实现原理、模块划分、接口约定、
+数据存储结构的基础依据。阅读对象为软件开发工程师、测试工程师、运维工程师与
+著作权审查人员。
+
+1.2 项目背景
+
+随着微服务与站点监控需求的普遍化，业界监控平台（如 Datadog）功能全面但定价
+较高；部分团队出于数据安全考虑，不希望在云端托管监控数据。APM-WATCH 定位为
+「Datadog 的轻切片」：面向单应用、小团队提供本地运行的关键接口可用性监控、
+TLS 证书到期监控与简易 APM（请求延迟/错误率）监控，具备终端 TUI 与 Web 两种
+界面形态和桌面/Webhook/邮件三种告警渠道。全部运行于本机，数据存于本地
+SQLite，零第三方运行时依赖。
+
+1.3 术语定义
+
+  APM       Application Performance Monitoring，应用性能监控。
+  p50/p95   延迟样本升序排列后位于 50% / 95% 位置的分位数，用于刻画典型
+            与尾部延迟。
+  可用率    时间加权 uptime%，即「(非 error 状态时长)/总时长」的百分数，
+            warn 状态计为在线（与 Datadog 口径一致）。
+  target   被监控对象的唯一标识（如接口 URL 名称、TLS 主机名、APM 服务名）。
+  断言      对探测结果的校验规则，如状态码断言、响应体关键字断言。
+  调度网格  按每个任务独立周期运行、且任务间不重叠的执行框架。
+  TUI       Terminal User Interface，终端字符界面。
+  WAL       SQLite 预写日志（Write-Ahead Logging）模式。
+  retentionDays  数据留存天数，超过后由后台任务自动裁剪。
+
+2  总体设计
+
+2.1 系统结构
+
+系统采用「引擎（Engine）为核心的分层结构」：
+
+```
+            ┌────────────────────────────────────────────┐
+            │                 bin/apm-watch.js           │  CLI 入口
+            │   run / demo / once / export / serve       │
+            └───────┬────────────────┬───────────────────┘
+                    │                │
+        ┌───────────▼─────────┐  ┌──▼─────────────────────────┐
+        │   Engine（引擎）    │  │   UI 层                     │
+        │  检查执行 / 调度 /   │  │  ui-server.js（Web 单页）  │
+        │  告警 / 自健康       │  │  ui-tui.js（终端 TUI）    │
+        └──┬────┬────┬────┬───┘  └──┬─────────────────────────┘
+           │    │    │    │         │
+   ┌───────▼─┐ ┌▼───┐ ┌◄▼───┐ ┌────▼─────┐        ┌───────────┐
+   │ check-  │ │check│ │apm  │ │ store.js │<──────>│ SQLite    │
+   │ http.js │ │tls  │ │.js  │ │ 存储层    │        │ (WAL)     │
+   └─────────┘ └┬────┘ └──┬──┘ └──────────┘        └───────────┘
+                └┬────────┴─────────┬──► notify.js（桌面/webhook）
+                 │                  └──► smtp.js（邮件，AUTH PLAIN/STARTTLS）
+   scheduler.js（调度网格，驱动全部检查统）
+```
+
+数据流：
+  1. Engine.start() 根据配置构建任务表，交 Scheduler 按各自周期调度；
+  2. 每个检查任务依次执行：check-http / check-tls / apm.summary() 产生
+     结果对象 r = { target, kind, status, latencyMs, detail, ... }；
+  3. 结果先写入 Store（states 快照、metrics 时序、events 日志），再进入
+     maybeAlert() 去重判定，需要时经 deliverAlert() 推送各告警渠道；
+  4. UI 层定时从 Store 读取最新状态、时序与事件，渲染 Web 页面或终端面板；
+  5. export 定时/手动将 Store 中的最新快照聚合并输出 JSON 或自包含 HTML。
+
+2.2 模块划分
+
+编号   模块             文件            主要职责
+────────────────────────────────────────────────────────────
+M01  CLI 入口          bin/apm-watch.js  命令解析、参数校验、启动 run/
+                                          demo/once/export/serve 子命令
+M02  配置加载          lib/config.js     读取 JSON 配置、环境变量覆盖
+M03  配置校验          lib/validate.js   fail-fast 校验并抛出可读错误
+M04  HTTP 检查         lib/check-http.js 状态码/关键字断言、延迟、超时
+M05  TLS 证书检查      lib/check-tls.js  证书链拉取、剩余天数、离线 PEM 解析
+M06  APM 采集          lib/apm.js        span 接收、滑动窗口、百分位汇总
+M07  可用率计算        lib/availability.js 时间加权 uptime%
+M08  调度器            lib/scheduler.js  非重叠 timer 网格
+M09  存储层            lib/store.js      SQLite 封装：states/metrics/events/meta
+M10  告警分发          lib/notify.js     桌面、Webhook 通知
+M11  SMTP 客户端       lib/smtp.js       手写 SMTP 协议客户端
+M12  引擎              lib/engine.js     检查编排、告警去重、自健康
+M13  Web 界面          lib/ui-server.js  静态页面 + JSON API
+M14  终端界面          lib/ui-tui.js     纯 ASCII 面板
+M15  状态导出          lib/export.js     JSON / 自包含 HTML 状态页
+M16  演示 Agent        lib/demo-agent.js 模拟 APM 上报
+M17  百分位工具        lib/stats.js      p50/p95 计算
+
+2.3 接口设计
+
+2.3.1 对外命令行接口（bin/apm-watch.js）
+
+  apm-watch run   [--ui tui|web] [--ui-port PORT] [--apm-port PORT] [--config FILE]
+  apm-watch demo  [--collect-addr URL] [--interval MS]
+  apm-watch once  [--config FILE]
+  apm-watch export [--config FILE] [--out FILE]
+  apm-watch serve [--config FILE] [--port PORT]
+
+  退出码约定（once）：0 = 全部 ok；1 = 存在 warn；2 = 存在 error。
+
+2.3.2 Web API（ui-server.js 提供）
+
+  GET /            返回单页 HTML（内嵌页面样式与该页面浏览器 JS）
+  GET /api/states  返回最新状态、汇总、可用率、monitor 自健康、五组时序
+                   （http:latency / tls:remaining / apm:p50、p95、errorRate，
+                   均按 target 拆分，浏览器端每个被监控目标画一条彩色曲线）
+  GET /api/events  返回最近 50 条事件（时间、级别、来源、消息）
+
+  /api/states 响应结构：
+  {
+    states:      [{ target, kind, status, latency_ms, detail, ts }],
+    summary:     { overall, counts:{ok,warn,error,unknown}, updated_at },
+    apm:         { errorRateThreshold },
+    availability:{ [target]: { pct, upMs, downMs, totalMs, samples } },
+    health:      { status, uptimeSince, lastCheckAt } | null,
+    series:      { 'http:latency': { [target]:[{target,ts,value}] }, ... }
+  }
+
+2.3.3 APM 采集接口（apm.js，HTTP POST）
+
+  路径：/apm/agent/trace
+  请求体：{ "name": "demo", "latency_ms": 42, "error": false }
+  响应：204 No Content；上报体大于 2MB 时断开连接。
+
+2.3.4 通知渠道接口
+
+  桌面：spawn notify-send -u <urgency> <title> <message>
+  Webhook：POST JSON { kind, target, status, detail, ts }，超时 4s
+  邮件：SMTP 协议，支持 AUTH PLAIN 与 STARTTLS 升级
+
+2.3.5 Storage 层接口（store.js，供 Engine/UI/export 调用）
+
+  saveState / latestStates / history
+  saveMetric / series
+  addEvent / recentEvents
+  setMeta / getMeta
+  pruneMetrics / pruneStates / pruneEvents
+
+2.4 数据库设计
+
+存储介质：SQLite（node:sqlite 内置 DatabaseSync），打开即设置
+PRAGMA journal_mode = WAL、PRAGMA synchronous = NORMAL。
+
+表 states（状态快照）
+  id          INTEGER PRIMARY KEY AUTOINCREMENT
+  ts          INTEGER NOT NULL       检查时间（毫秒）
+  target      TEXT NOT NULL          被监控对象标识
+  kind        TEXT NOT NULL          'http' | 'tls' | 'apm'
+  status      TEXT NOT NULL          'ok' | 'warn' | 'error' | 'unknown'
+  latency_ms  REAL                   延迟/剩余天数等数值（可为空）
+  detail      TEXT                   状态描述（错误原因、证书剩余天数、APM 摘要）
+  索引：idx_states_target_ts (target, ts)
+
+表 metrics（时序数据，用于曲线）
+  id     INTEGER PRIMARY KEY AUTOINCREMENT
+  ts     INTEGER NOT NULL
+  key    TEXT NOT NULL             如 'http:api/latency'、'tls:certs/remaining'
+  value REAL NOT NULL
+  索引：idx_metrics_key_ts (key, ts)
+
+表 events（告警与审计日志）
+  id      INTEGER PRIMARY KEY AUTOINCREMENT
+  ts      INTEGER NOT NULL
+  level   TEXT NOT NULL             'info' | 'warn' | 'error'
+  source  TEXT NOT NULL             来源（http/tls/apm 等）
+  message TEXT NOT NULL             事件描述
+  索引：idx_events_ts (ts)
+
+表 meta（键值元数据，存 monitor 自健康等）
+  key    TEXT PRIMARY KEY
+  value  TEXT NOT NULL              JSON 字符串或普通字符串
+  ts     INTEGER NOT NULL
+
+留存策略：Engine.buildTasks() 内置 'store:prune' 任务，初始延迟 60s、周期
+1h，按 store.retentionDays（默认 7 天）删除早于 (now - retentionDays) 的
+metrics / states / events，保证长时间运行数据量与内存不增长。
+
+3  详细设计
+
+3.1 检查引擎模块（engine.js）
+
+3.1.1 单个 HTTP 检查
+  runHttpCheck(cfg)：
+    result = await checkEndpoint(cfg)        // 发请求并按断言判定
+    store.saveState({...result})             // 落状态快照
+    saveMetric('http:<target>/latency', ...) // 落延迟时序
+    saveMetric('http:<target>/status', ...)  // 落状态码时序
+    _noteHealth(result.status)               // 更新 monitor 自健康窗口
+    persistHealth()
+    return result
+
+  状态判定（finalize，位于 check-http.js）：
+    if httpError           -> 'error'
+    else if 状态码≠断言     -> 'error'
+    else                    -> 'ok'
+    再叠加 bodyIncludes 断言（缺 body 或未包含关键字 -> 'error'）；
+    最后若 status===ok 且存在 latencyThresholdMs 且 latency>threshold
+    -> 降级为 'warn'（慢但断言通过，黄色）。
+
+3.1.2 单个 TLS 检查
+  runTlsCheck(cfg)：
+    有 cfg.pemFile：readFileSync 读入，inspectPemChain() 离线解析多证书链
+    否则 fetchCertChain({host,port,...}) 建 TLS 连接拉取真实链
+    计算 days = remainingDays(validTo)
+    判定：error(解析失败/无证书/已过期) -> warn(<=warnDaysBefore) -> ok
+    落 states + 'tls:<target>/remaining' 时序，_noteHealth + persistHealth
+
+3.1.3 APM 检查
+  runApmCheck()：
+    summary = collector.summary()            // 各服务分位与错误率
+    每个服务保存 metrics（p50/p95/errorRate）与 states 快照
+    状态判定：errorRate >= errorRateThreshold 或（有 latencyThresholdMs 且
+    p95 >= 阈值）-> 'warn'，否则 'ok'
+  runApmCheckWithAlerts()：先 runApmCheck，再对每个结果过 maybeAlert + deliverAlert。
+
+3.1.4 告警去重（maybeAlert）
+  key = kind:target；record = { status, lastTs, count }
+  非 ok 状态：首次切换发告警，或距上次发送超过 repeatIntervalSeconds
+  （默认 3600s）时重新发送（freshen）；count 累计。
+  ok 状态：若此前非 ok 则发送恢复通知（recovered），count 清零。
+
+3.1.5 监控器自健康
+  维护 health = { recent:[{status,ts}], lastCheckAt, uptimeSince, status }。
+  _noteHealth(status) 追加本次结果并仅保留 10 分钟窗口内的记录，按
+  worstStatus（error>warn>ok）求窗口内最差状态；persistHealth() 将
+  { status, uptimeSince, lastCheckAt } 写入 meta 表，供 Web/TUI/export
+  统一展示。每次检查路径（调度任务、tick、once）均持久化。
+
+3.2 调度模块（scheduler.js）
+
+  暴露 MIN_INTERVAL_S=30、MAX_INTERVAL_S=300。
+  输入任务项 { id, intervalMs, run, initialDelayMs }。
+  实现：每个任务自循环——run 完成后用 setTimeout 重启下一次；interval 内
+  未完成则下一次顺延（不重叠）；timer 全部 unref()，进程可自然退出；
+  首次运行按 initialDelayMs 错峰，避免所有检查同时发起。
+  stop() 置 running=false 并 clearTimeout 全部句柄。
+
+  间隔解析（engine.js configSeconds / taskIntervalMs）：
+    支持数字（秒）与单位字符串 '30s' / '2m' / '1h' / '1d'；
+    经 clampIntervalSeconds 钳制到 [30, 300]s；无配置时按类型缺省
+    （http 60s / tls 300s / apm 60s），单条检查的 intervalSeconds 优先。
+
+3.3 存储模块（store.js）
+
+  Store 构造即建库建表，注入 now() 供时钟控制（测试用 setClock）。
+  关键实现要点：
+    latestStates()：子查询取每个 (target, kind) 的 MAX(id) 快照，得到最新
+    一屏状态；
+    series()：按 key 倒序取窗口内最新 limit 个点再 reverse()，保证输出升序
+    时间序便于绘图（内存可控）；
+    meta：value 存入前 JSON.stringify，读取时 try JSON.parse 回退为字符串；
+    裁剪：pruneMetrics/pruneStates/pruneEvents 返回 DELETE 影响行数。
+
+3.4 APM 采集模块（apm.js）
+
+  ApmCollector 维护 samples: Map<name, [{ts, latencyMs, error}]>，窗口
+  windowMs 默认 60s、上限 maxSamples 默认 5000。
+  add()：追加样本，超上限剪掉头部；_prune() 剔除窗口外样本（队首指针
+  shift），窗口空时删除该服务。
+  summary()：按服务排序取 latency 数组，extentPercentiles 求 p50/p95，
+  并计算 errorRate = errors/samples。
+  attach(server, prefix)：接管 'request' 事件；非本前缀请求转交先前监听器
+  （前置 UI 请求也能共用同一 server）；解析 JSON 载荷后 add()，返回 204。
+
+  分位算法（stats.js extentPercentiles）：
+    sorted = 升序排序；idx = min(n-1, ceil(p/100 * n) - 1)；返回 sorted[idx]。
+
+3.5 告警与通知模块（notify.js / smtp.js）
+
+  桌面：spawn notify-send，urgency=normal/critical，resolve 结果对象。
+  Webhook：fetch POST JSON，AbortController 超时 4s，非 2xx 计失败。
+  SMTP（sendMail）：
+    连接 net.connect / tls.connect(secure)；
+    读 banner(220) -> EHLO(250) -> 若支持 STARTTLS 则发送 STARTTLS(220)，
+    移除明文 data 监听并切除残留缓冲，以 tls.connect({socket}) 升级后重新
+    attach 解析器并再次 EHLO；
+    可选 AUTH PLAIN 用户/密码(235)；
+    MAIL FROM(250) -> RCPT TO(250/251) -> DATA(354) -> 完整信封
+    （From/To/Subject/MIME-Version/Content-Type/Date/正文）以 '\r\n.\r\n'
+    结束(250) -> QUIT(221)。
+    响应解析：按行剥离缓冲并断言 3 位响应码，多行继续码（第四字符 '-'）跳过。
+    每步具备超时保护（armTimer/fail）。
+
+3.6 界面模块
+
+3.6.1 Web（ui-server.js）
+  服务器为单 http server；'/' 输出内嵌 CSS/JS 的单页；PAGE 模板中的浏览器
+  JS 每 5s 刷新 /api/states 与 /api/events，用 canvas 2D 绘制：
+    drawLines：按时序折线，每个 target 一条 PALETTE 彩色线；
+    drawApm：每个服务 p50 实线 + p95 虚线，同色系；
+    drawErrRate：错误率曲线 + 告警阈值黄色虚线；
+    多目标时绘制图例（drawLegend），超宽条目自动省略。
+  服务器端 formatSeries 将 ts 转为秒、打上 target 标签；历史窗口取
+  ui.historySeconds（默认 24h）。
+
+3.6.2 终端 TUI（ui-tui.js）
+  interval（默认 2s）全屏重绘；ANSI 清屏/隐藏光标；状态按重级
+  (error2>warn1>ok0) 取最差；每个 http 目标打印最近 60 分钟延迟
+  sparkline（▁▂▃▄▅▆▇█ 8 级量化）；APM 目标打印 p50/p95 与错误率
+  sparkline；底部打印最近 5 条事件。SIGINT/SIGTERM 恢复光标并退出。
+
+3.7 导出模块（export.js）
+
+  exportStatus(store, config, version)：
+    取最新 100 条快照，按 target 分组；
+    每个 target 聚合 http/tls/apm 三种 kind 的状态，并对 http 目标基于
+    ui.historySeconds 窗口的 states 历史计算时间加权可用率；
+    summary.overall 取最差、counts 计数；
+    附 health（来自 meta 表）与 generated 时间戳。
+  renderStatusPage(status)：拼装自包含 HTML（内嵌全部 CSS，无外部依赖），
+  可直接放置于静态托管/CDN。
+
+3.8 关键数据结构设计
+
+  result（统一检查结果对象）
+    { ts, target, kind, status, latencyMs, statusCode?, detail }
+  alertState（告警去重表，engine.alertState: Map<key, {status,lastTs,count}>）
+  body  br 任务网格
+    task: { id, intervalMs, initialDelayMs, run:async()=>void }
+  health 自健康状态
+    { recent:[{status,ts}], lastCheckAt, uptimeSince, status }
+  samples 样本环（apm）
+    Map<name, Array<{ts, latencyMs, error}>>
+  availability 结果
+    { pct, upMs, downMs, totalMs, samples }
+
+3.9 关键流程设计
+
+3.9.1 主监控运行流程（run 命令）
+  加载配置 -> assertValidConfig(fail-fast) -> 建 Store -> 建 Engine
+  （Engine 构造内 new Scheduler / new ApmCollector）-> 按 ui 模式起
+  Web/TUI（TUI 模式下另起独立 APM collector 端口）-> engine.start()
+  （buildTasks 生成检查任务 + store:prune 后交 scheduler.start）-> 常驻。
+
+3.9.2 一轮检查流程（tick 或单任务）
+  对全部 http/tls 配置并发发起 runXxxCheck -> Promise.allSettled ->
+  对 fulfilled 的结果 maybeAlert -> 需要则 deliverAlert -> 若开启 APM
+  collect 则 runApmCheckWithAlerts -> persistHealth。
+
+3.9.3 告警推送流程
+  maybeAlert 判定（首报/状态切换/重复周期到期）-> deliverAlert：
+  状态非 ok：addEvent('warn',...)，依次桌面/webhook/邮件；
+  状态恢复 ok：addEvent('info',... 'recovered')，并通知「RECOVERED」。
+  各渠道独立 try/catch，单个渠道失败不阻断其余渠道。
+
+3.9.4 24 小时低资源运行验证（memory 测试）
+  加速时间轴模拟 24h：周期内循环 tick、注入 APM 样本、执行存储裁剪；
+  断言进程 RSS < 200MB，验证 WAL + 裁剪策略的有效性。

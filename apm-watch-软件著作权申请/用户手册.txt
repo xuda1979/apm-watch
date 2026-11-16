@@ -1,0 +1,337 @@
+================================================================================
+               APM-WATCH V1.0 用户手册
+================================================================================
+（依据 GB/T 8567-2006《计算机软件文档编制规范》用户手册(SUM)编制）
+
+版本：V1.0                          编制日期：2026年11月16日
+编制单位：xuda1979
+适用范围：APM-WATCH（APM 接口可用性与证书监控软件）
+
+目录
+  1  引言
+    1.1 编写目的
+    1.2 软件范围
+    1.3 术语
+  2  安装与卸载
+    2.1 环境要求
+    2.2 安装步骤
+    2.3 卸载方法
+  3  操作说明（按功能模块）
+    3.1 命令行总览
+    3.2 常用监控运行（run）
+    3.3 一次性检查（once）
+    3.4 演示模式（demo）
+    3.5 状态导出（export）
+    3.6 仅启动网页服务（serve）
+    3.7 Web 界面使用
+    3.8 终端 TUI 使用
+  4  配置与参数
+    4.1 配置文件位置与格式
+    4.2 配置项详解
+    4.3 环境变量覆盖
+    4.4 配置校验
+  5  故障处理与 FAQ
+    5.1 常见故障与处理
+    5.2 常见问题（FAQ）
+================================================================================
+
+1  引言
+
+1.1 编写目的
+
+本手册面向 APM-WATCH V1.0 的最终用户、部署者与运维人员，说明软件的安装、
+启动、配置、日常使用与常见故障处理方法，帮助用户在最短时间内完成部署并
+正确解读监控结果。阅读对象：开发者、小团队技术负责人、运维人员。
+
+1.2 软件范围
+
+APM-WATCH 是一个本地运行的轻量监控软件，提供三类监控能力：
+  1) HTTP(S) 接口可用性：状态码断言、响应体关键字断言、延迟测量与慢响应
+     分级（warn）；
+  2) TLS 证书到期：远程证书链剩余天数与本地 PEM 证书文件离线检查；
+  3) 简易 APM：接收受监控进程上报的请求延迟/错误，计算 p50/p95 与错误率。
+软件同时提供终端 TUI、Web 单页两种查看界面，桌面通知、Webhook、邮件三种
+告警渠道，以及 JSON/自包含 HTML 状态导出。
+
+1.3 术语
+
+  up 时长      监控进程从启动到现在的持续运行时长。
+  上次检查      最近一次任一检查完成的时间。
+  monitor 状态  最近 10 分钟检查窗口内最差的状态（error>warn>ok）。
+  可用率        uptime%，warn 视为在线，仅 error 计入不可用时长。
+  分位数        p50/p95 见设计说明书 1.3。
+  fixture       示例被测服务（测试/演示用本地服务）。
+
+2  安装与卸载
+
+2.1 环境要求
+
+  操作系统：Linux（推荐）、macOS、Windows（WSL 或原生 Node 环境）；
+  软件要求：Node.js v22.5 及以上（内置 node:sqlite 支持，无需第三方包）；
+  硬件要求：1 核 CPU / 512MB 内存即可满足日常监控；实测 24 小时连续运行
+  模拟内存占用低于 200MB；
+  可选依赖：桌面通知功能在 Linux 桌面环境需要 notify-send（通常随
+  libnotify-bin 提供）；邮件功能需要可访问的 SMTP 服务器。
+
+2.2 安装步骤
+
+  1. 安装 Node.js v22.5+：
+     https://nodejs.org/ 下载 LTS 版本并安装，命令行执行 `node -v` 确认
+     版本号 ≥ v22.5。
+
+  2. 获取软件代码（本地目录即可，无需全局安装）：
+     git clone <项目地址>  apm-watch，或在已有代码目录中使用。
+
+  3. 安装依赖（本软件零第三方运行时依赖；执行后提示可省略）：
+     cd apm-watch
+     npm install
+
+  4. 验证安装：
+     node bin/apm-watch.js --help
+     出现命令用法说明即表示安装成功。
+
+  5. 桌面通知可达性（可选）：
+     Linux 桌面环境中，确认 notify-send 存在：
+     `command -v notify-send`，不存在则 `sudo apt install libnotify-bin`。
+
+2.3 卸载方法
+
+  1. 停止运行中的监控进程（Ctrl-C）。
+  2. 删除代码目录：`rm -rf <apm-watch目录>`。
+  3. 删除运行期产生的本地数据文件（默认位于工作目录）：
+     apm-watch.db（及其 -wal / -shm 伴随文件）、导出的状态页/JSON。
+  4. 若曾配置 SMTP/Webhook 环境变量，在 shell 配置文件（.bashrc 等）中
+     清除对应变量。由于软件不写入系统目录，卸载即恢复原状。
+
+3  操作说明（按功能模块）
+
+3.1 命令行总览
+
+  apm-watch run    [--ui tui|web] [--ui-port PORT] [--apm-port PORT] [--config FILE]
+  apm-watch demo   [--collect-addr URL] [--interval MS]
+  apm-watch once   [--config FILE]
+  apm-watch export [--config FILE] [--out FILE]
+  apm-watch serve  [--config FILE] [--port PORT]
+
+3.2 常用监控运行（run）
+
+  功能：启动完整监控（检查 + 存储 + 界面 + 告警），常驻运行。
+
+  示例：
+  # 使用默认配置（CWD 下 apm-watch.json），Web 界面：
+  node bin/apm-watch.js run
+
+  # 使用指定配置文件，终端 TUI 界面：
+  node bin/apm-watch.js run --config ./my.json --ui tui
+
+  # 指定 Web 端口（默认随机端口 0 → 自动分配）：
+  node bin/apm-watch.js run --ui web --ui-port 8787
+  首次启动约 0–5 秒内即有第一屏状态输出。
+
+  TUI 模式下若启用 APM 采集（apm.collect 默认开启），会在独立端口（默认
+  8789）开放采集器，可在另一终端注入 demo 流量。
+
+3.3 一次性检查（once）
+
+  功能：对配置中的全部 HTTP/TLS 检查各执行一次并逐行打印结果，进程结束。
+  退出码按最差状态返回：0 全部 ok；1 存在 warn（慢响应/证书临近到期）；2
+  存在 error。适合作为 cron / CI 冒烟检查：
+
+  示例（加入 crontab）：
+  */5 * * * *  cd /opt/apm-watch && node bin/apm-watch.js once --config app.json
+
+3.4 演示模式（demo）
+
+  功能：启动一个模拟的服务进程，周期向本地采集器 POST span
+  { name, latency_ms, error }，用于在没有真实流量的环境下观察 APM 曲线。
+  默认目标 http://127.0.0.1:8787/apm/agent/trace，每隔 700ms 上报一次。
+
+  示例：
+  node bin/apm-watch.js demo
+  node bin/apm-watch.js demo --interval 300 --collect-addr http://127.0.0.1:8789/apm/agent/trace
+
+3.5 状态导出（export）
+
+  功能：把 Store 中的当前快照导出为 JSON 或自包含 HTML 状态页。
+
+  示例：
+  # 输出 JSON 到终端：
+  node bin/apm-watch.js export --config app.json
+  # 写出 JSON 文件：
+  node bin/apm-watch.js export --config app.json --out status.json
+  # 写出零依赖 HTML（可托管到静态服务器/CDN）：
+  node bin/apm-watch.js export --config app.json --out status.html
+
+3.6 仅启动网页服务（serve）
+
+  功能：只启动 Web UI 读取已有数据库（如由 run 长期写入的库），不执行任何
+  check，适合部署一台展示机。
+
+  示例：
+  node bin/apm-watch.js serve --config app.json --port 8787
+
+3.7 Web 界面使用
+
+  运行 run/--ui web 后访问控制台打印的地址（如 http://127.0.0.1:8787/）。
+  页面自上而下为：
+   - 顶栏 meta：更新时间、行数、总体状态、monitor up 时长、上次检查时间；
+   - 状态胶囊：ok / warn / error 计数与 overall；
+   - 目标表格：每个 target 的状态、kind、延迟、详情（含可用率 %）；
+   - HTTP 延迟历史、TLS 剩余天数历史：每个目标一条独立彩色折线；
+   - APM p50/p95 曲线（实线 p50 / 虚线 p95）与错误率曲线（含黄色阈值虚线）；
+   - 底部最近事件表（告警/恢复/审计）。
+  页面每 5 秒自动刷新，无需手动操作。
+
+3.8 终端 TUI 使用
+
+  运行 run/--ui tui。面板每 2 秒刷新，内容包括：
+   - 首行：monitor up 时长、上次检查时间、monitor 状态；
+   - 每个 target 一行：最差状态色标 + http/cert/apm 详情 + 可用率；
+   - 最近 1 小时延迟 sparkline（▁▂▃▄▅▆▇█）；
+   - APM 服务 p50/p95 与错误率 sparkline；
+   - 底部最近事件。
+  退出：Ctrl-C；TUI 会先恢复光标并停止引擎再退出。
+
+4  配置与参数
+
+4.1 配置文件位置与格式
+
+  默认读取当前工作目录下的 apm-watch.json，其次 .apm-watch.json；也可用
+  --config 显式指定。格式为标准 JSON。未找到时使用空配置（不执行检查）。
+
+4.2 配置项详解
+
+  http：对象数组，每个对象一个 HTTP 检查
+    name           显示名称（缺省用 url）
+    url            必填，目标地址
+    method         请求方法，默认 GET
+    headers        请求头对象
+    body           请求体（非 GET 时可用）
+    timeoutMs      超时毫秒，默认 5000
+    latencyThresholdMs  慢响应阈值：状态断言通过但延迟超过时降级为 warn
+    intervalSeconds    单个检查间隔（秒或 '2m' 等单位串）
+    assert.statusCode    期望状态码（如 200）
+    assert.bodyIncludes  期望响应体包含的关键字
+
+  tls：对象数组，每个对象一个证书检查
+    name           显示名称
+    host           目标主机（socket 扫描证书链）
+    port           端口，默认 443
+    pemFile        本地 PEM 证书文件路径（离线/无法直连时使用）
+    warnDaysBefore 提前告警天数，默认 30
+    servername     SNI 名称（自签/多证书场景）
+    rejectUnauthorized  是否校验证书链，默认 true（自签设为 false）
+    intervalSeconds 单个检查间隔
+
+  apm：对象
+    collect          是否启用采集，默认 true
+    errorRateThreshold 错误率告警阈值，默认 0.05
+    latencyThresholdMs  p95 慢延迟阈值（ms），超过则 warn
+
+  scheduler：对象，全局默认间隔（可被单个检查 intervalSeconds 覆盖）
+    httpIntervalSeconds 默认 60、tlsIntervalSeconds 默认 300、
+    apmIntervalSeconds 默认 60；所有间隔被钳制到 [30, 300] 秒。
+
+  notifications：对象
+    desktop: true/false（默认 true，关闭用 false）
+    repeatIntervalSeconds  重复告警间隔，默认 3600
+    webhook.url    Webhook 地址（触发时 POST JSON）
+    email.host/port/secure/user/pass/from/to   邮件发送参数
+
+  ui：对象
+    mode: 'web' | 'tui'
+    port             Web 端口（默认 0 = 自动分配）
+    historySeconds   曲线/可用率历史窗口（默认 86400）
+
+  store：对象
+    path            数据库路径（默认 ./apm-watch.db，':memory:' 仅内存）
+    retentionDays   数据留存天数，默认 7（支持 '48h'/'1w' 单位串）
+
+4.3 环境变量覆盖
+
+  APMW_NOTIFY_WEBHOOK_URL  覆盖 notifications.webhook.url
+  SMTP_HOST / SMTP_PORT / SMTP_SECURE / SMTP_USER / SMTP_PASS
+  SMTP_FROM / SMTP_TO       覆盖 notifications.email（邮件参数）
+  说明：SMTP 参数用环境变量配置可避免把密码写入配置文件。
+
+4.4 配置校验
+
+  启动（run / once / export / serve）时先做 fail-fast 校验，常见问题在启动
+  即报错并退出：http/tls 写成对象而非数组、http 缺 url、tls 既无 host 也无
+  pemFile、端口/超时/告警阈值非法、间隔无法解析等。校验规则详见
+  lib/validate.js。
+
+5  故障处理与 FAQ
+
+5.1 常见故障与处理
+
+  F1 启动提示"invalid config: ..."
+    按提示行修正配置（常见：http 应为数组；tls 缺 host 或 pemFile）。
+
+  F2 端口冲突：Web/采集端口被占用
+    换端口：run --ui-port 8788 / --apm-port 8790，或在配置 ui.port、
+    apm.port 指定。
+
+  F3 地址已在本机使用（EADDRINUSE）
+    用 `ss -ltnp | grep <port>` 查找占用进程，停掉或换端口。
+
+  F4 部分目标显示 error，详情为连接失败/超时
+    检查目标可达性：`curl -v <url>`；调大 timeoutMs；确认 DNS/防火墙。
+
+  F5 TLS 自签/内网证书显示 error
+    证书链不受信属于预期；如需只看剩余天数，可在对应 tls 条目加
+    rejectUnauthorized:false，必要时指定 servername。
+
+  F6 APM 曲线为空
+    确认 apm.collect 开启、采集端口与 demo 的 --collect-addr 一致、demo
+    进程在运行（日志打印"agent → ...ms"）。
+
+  F7 桌面通知不弹出
+    确认安装了 notify-send（libnotify-bin）；无头服务器（无桌面）环境请
+    改用 webhook 或邮件渠道。
+
+  F8 邮件告警失败
+    检查 SMTP host/port/secure 设置；部分服务（如国内 465 端口）需
+    secure:true；或改用环境变量注入 SMTP_* 并在 .bashrc 确认无残留错误值。
+
+  F9 数据量/磁盘持续增长
+    默认 7 天留存会自动裁剪；如长期跑可调低 store.retentionDays 观察。
+
+  F10 数据库文件被占用无法写入（多进程同时写同一 db）
+    同一数据库请只由一个监控进程写入；只读展示用 serve。
+
+5.2 常见问题（FAQ）
+
+  Q1 需要安装哪些第三方包？
+    零第三方运行时依赖，仅需 Node.js v22.5+ 内置模块即可运行。
+
+  Q2 监控数据存放在哪里？
+    本地 SQLite 文件（默认 ./apm-watch.db，WAL 模式），不上传任何云端。
+
+  Q3 可用率与状态有什么关系？
+    可用率按"时间加权"计算：目标保持在非 error 状态即为在线，warn（如
+    证书 15 天后到期）仍计为在线，避免误报 0% 可用。
+
+  Q4 为什么慢接口显示黄色（warn）而不是红色？
+    warn 表示"尚在可用但性能退化"：HTTP 断言通过但延迟超阈值，或 APM
+    p95 超阈值但错误率未超阈。error 表示硬性失败。
+
+  Q5 repeatIntervalSeconds 有什么用？
+    控制同一目标持续故障时重复告警的最短间隔，默认 1 小时，避免告警刷屏。
+
+  Q6 `once` 的退出码可以用于 CI 吗？
+    可以。0=全部ok，1=有警告，2=有错误，适配 cron/CI 冒烟检查。
+
+  Q7 浏览器访问 Web 页面需要额外安装什么？
+    无需任何插件，现代浏览器直接访问即可，页面为单文件自包含实现。
+
+  Q8 如何长期后台运行？
+    Linux 下可用 systemd / nohup 常驻；Windows 可用计划任务。注意保持
+    同一个工作目录（配置文件与数据库相对路径一致）。
+
+  Q9 卸载后如何彻底清理？
+    删除代码目录与运行目录下的 apm-watch.db 系列文件即可（见 2.3）。
+
+  Q10 支持同时监控多少个目标？
+    数量不受软件限制；每个检查独立调度、互不阻塞。建议面向实际需要合理
+    配置，间隔不低于 30 秒。
