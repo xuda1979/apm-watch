@@ -151,6 +151,27 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.ok(!alerts.some((a) => a.target === 'fast'), 'fast service must not alert');
 });
 
+test('engine: collector window and maxSamples are wired from config', async () => {
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: { apm: { collect: true, windowMs: 50_000, maxSamples: 3 } },
+    log: () => {},
+  });
+  // windowMs: a sample 60s old falls outside the 50s window and is pruned
+  const now = Date.now();
+  engine.collector.add('win', 10, false, now - 60_000);
+  engine.collector.add('win', 20, false, now);
+  const { summary } = await engine.runApmCheck();
+  assert.equal(summary.win.samples, 1, 'old sample pruned by configured windowMs');
+  assert.equal(summary.win.p50, 20);
+  // maxSamples: the buffer caps at the configured 3 even with 5 writes
+  for (let i = 0; i < 5; i++) engine.collector.add('cap', i, false, now + i);
+  const { summary: summ2 } = await engine.runApmCheck();
+  assert.ok(summ2.cap.samples <= 3, 'samples capped by configured maxSamples');
+  store.close();
+});
+
 test('engine: tls pemFile checks a local cert bundle without a socket', async (t) => {
   const { startHttpsServer } = await import('./helpers/fixtures.js');
   const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');

@@ -70,17 +70,21 @@ test('validate: apm threshold typos that would corrupt the warn logic are caught
   // error-rate threshold must be a fraction in [0,1]; latency threshold a
   // positive number of ms — both feed engine comparisons unguarded.
   const errs = validateConfig({
-    http: [], tls: [], apm: { collect: true, errorRateThreshold: 1.5, latencyThresholdMs: -10 },
+    http: [], tls: [], apm: { collect: true, errorRateThreshold: 1.5, latencyThresholdMs: -10, windowMs: -1, maxSamples: 0 },
   });
   const joined = errs.join('\n');
   assert.match(joined, /apm\.errorRateThreshold.*between 0 and 1/);
   assert.match(joined, /apm\.latencyThresholdMs.*positive/);
+  assert.match(joined, /apm\.windowMs.*positive/);
+  assert.match(joined, /apm\.maxSamples.*positive integer/);
   // non-numeric typos are caught the same way
-  const notNum = validateConfig({ http: [], tls: [], apm: { collect: true, errorRateThreshold: 'high', latencyThresholdMs: '500ms' } });
+  const notNum = validateConfig({ http: [], tls: [], apm: { collect: true, errorRateThreshold: 'high', latencyThresholdMs: '500ms', windowMs: '1min', maxSamples: 'lots' } });
   assert.match(notNum.join('\n'), /apm\.errorRateThreshold.*between 0 and 1/);
   assert.match(notNum.join('\n'), /apm\.latencyThresholdMs.*positive/);
+  assert.match(notNum.join('\n'), /apm\.windowMs.*positive/);
+  assert.match(notNum.join('\n'), /apm\.maxSamples.*positive integer/);
   // boundary values remain accepted: 0 = warn on any error, 1 = never by rate
-  const ok = validateConfig({ http: [], tls: [], apm: { collect: true, errorRateThreshold: 0, latencyThresholdMs: 1 } });
+  const ok = validateConfig({ http: [], tls: [], apm: { collect: true, errorRateThreshold: 0, latencyThresholdMs: 1, windowMs: 1000, maxSamples: 5 } });
   assert.deepEqual(ok, []);
 });
 

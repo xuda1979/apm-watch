@@ -91,7 +91,7 @@ engine 日志走 stderr，方便脚本解析。`--version` 打印版本号并退
     // 自签/内网证书请配合：
     // "rejectUnauthorized": false, "servername": "my-host"
   ],
-  "apm": { "collect": true, "errorRateThreshold": 0.05, "latencyThresholdMs": 500 },
+  "apm": { "collect": true, "errorRateThreshold": 0.05, "latencyThresholdMs": 500, "windowMs": 60000, "maxSamples": 5000 },
   "scheduler": { "httpIntervalSeconds": 30, "tlsIntervalSeconds": 300, "apmIntervalSeconds": 60 },
   "notifications": {
     "desktop": true,

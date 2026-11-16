@@ -197,7 +197,7 @@ async function cmdOnce(args) {
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
-      apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null },
+      apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000 },
       results: results.map((r) => ({
         target: r.target, kind: r.kind, status: r.status,
         ts: r.ts ?? null,

@@ -53,6 +53,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.apm.errorRateThreshold, 0.05);
   // unconfigured slow-latency threshold is null, not dropped (web api parity)
   assert.equal(out.apm.latencyThresholdMs, null);
+  assert.equal(out.apm.windowMs, 60_000, 'collector window defaults surfaced like the other apm knobs');
   setTimeout(store.close, 0);
 });
 
