@@ -112,6 +112,26 @@ test('validate: store.retentionDays typos that would corrupt the prune task are 
   }
 });
 
+test('validate: notifications.repeatIntervalSeconds typos that would corrupt the alert dedup are caught', () => {
+  // repeatIntervalSeconds gates the re-send window (engine.js maybeAlert) and
+  // is multiplied by 1000 directly — a unit string would silently respam.
+  for (const v of [0, -1, -60, '5m', 'every-hour', 1.5]) {
+    assert.match(
+      validateConfig({ http: [], tls: [], notifications: { repeatIntervalSeconds: v } }).join('\n'),
+      /notifications\.repeatIntervalSeconds.*positive.*number of seconds/,
+      `repeatIntervalSeconds=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  // positive numbers of seconds stay accepted, including the 3600 default
+  for (const v of [1, 60, 3600, 7200]) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], notifications: { repeatIntervalSeconds: v } }),
+      [],
+      `repeatIntervalSeconds=${JSON.stringify(v)} must be accepted`,
+    );
+  }
+});
+
 test('validate: non-object section is caught', () => {
   const errs = validateConfig({ http: [], tls: [], scheduler: 'daily' });
   assert.match(errs.join('\n'), /config\.scheduler must be an object/);

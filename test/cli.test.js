@@ -149,6 +149,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   writeFileSync(cfg, JSON.stringify({
     apm: { collect: true, errorRateThreshold: 0.12, latencyThresholdMs: 800, windowMs: 120_000, maxSamples: 3 },
     store: { path: path.join(dir, 'apm-only.db'), retentionDays: 21 },
+    notifications: { repeatIntervalSeconds: 1800 },
   }));
   // No agent is feeding the collector in this fresh process, so the APM
   // summary is empty — what matters is that validation stops rejecting the
@@ -164,6 +165,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.apm.windowMs, 120_000, 'configured collector window surfaces in once --json');
   assert.equal(doc.apm.maxSamples, 3, 'configured collector sample-cap surfaces in once --json');
   assert.equal(doc.store.retentionDays, 21, 'configured store retention surfaces in once --json');
+  assert.equal(doc.notifications.repeatIntervalSeconds, 1800, 'configured alert repeat-interval surfaces in once --json');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {

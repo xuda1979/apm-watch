@@ -65,6 +65,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.deepEqual(out.tls.timeoutMs, {}, 'empty-config tls timeout map defaults to {}');
   // store retention (the value the store:prune scheduler task uses): default 7
   assert.equal(out.store.retentionDays, 7, 'unconfigured store retention surfaces as the 7d default');
+  // alert repeat-interval (the engine's re-send dedup window): default 3600
+  assert.equal(out.notifications.repeatIntervalSeconds, 3600, 'unconfigured alert repeat-interval surfaces as the 3600s default');
   setTimeout(store.close, 0);
 });
 
