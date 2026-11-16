@@ -87,10 +87,16 @@ apm-watch serve [--config FILE] [--port PORT]
 
 无效的 scheduler 间隔会被自动钳制到 [30, 300]s。
 
+启动时会先做**配置校验**（`lib/validate.js`）：`http`/`tls` 写成了对象而非数组、
+HTTP 条目缺少 `url`、TLS 条目既无 `host` 也无 `pemFile`、端口/超时/告警阈值非法、
+scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退出，而不是静默跑一个
+什么都不检查的监控。`validateConfig(cfg)` 返回错误列表，`assertValidConfig(cfg)`
+在 CLI 启动路径上抛出并中止。
+
 ## 测试
 
 ```bash
-npm test             # 全部 50 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 59 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```
@@ -137,6 +143,7 @@ node bin/apm-watch.js demo --collect-addr http://127.0.0.1:8789/apm/agent/trace
 bin/apm-watch.js     # CLI 入口（run/demo/once/export/serve）
 lib/check-http.js    # HTTP 探测
 lib/check-tls.js     # 证书链扫描/解析
+lib/validate.js      # 配置校验（fail-fast）
 lib/apm.js           # APM collector（HTTP span 接收 + 百分位）
 lib/availability.js  # 时间加权可用率（uptime%，warn 计为在线）
 lib/demo-agent.js    # 模拟上报服务

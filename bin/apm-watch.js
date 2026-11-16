@@ -5,6 +5,7 @@ import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../lib/config.js';
+import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine } from '../lib/engine.js';
 import { createUiServer } from '../lib/ui-server.js';
@@ -82,6 +83,7 @@ function ensureStoreDir(p) {
 async function cmdRun(args) {
   const configPath = args.config;
   const config = loadConfig(configPath);
+  assertValidConfig(config);
   const storePath = resolveStorePath(config);
   ensureStoreDir(storePath);
   const store = new Store(storePath);
@@ -146,6 +148,7 @@ async function cmdDemo(args) {
 
 async function cmdOnce(args) {
   const config = loadConfig(args.config);
+  assertValidConfig(config);
   const storePath = resolveStorePath(config);
   ensureStoreDir(storePath);
   const store = new Store(storePath);
@@ -164,6 +167,7 @@ function emoji(s) { return s === 'ok' ? 'OK' : s === 'warn' ? 'WS' : '!!'; }
 
 async function cmdExport(args) {
   const config = loadConfig(args.config);
+  assertValidConfig(config);
   const storePath = resolveStorePath(config);
   ensureStoreDir(storePath);
   const store = new Store(storePath);
@@ -180,6 +184,7 @@ async function cmdExport(args) {
 
 async function cmdServe(args) {
   const config = loadConfig(args.config);
+  assertValidConfig(config);
   const storePath = resolveStorePath(config);
   ensureStoreDir(storePath);
   const store = new Store(storePath);
