@@ -60,6 +60,15 @@ test('engine: runs http + tls checks and persists + alerts on cert expiry', asyn
   assert.equal(api2.method, 'GET');
   assert.equal(tlsSoon.days_remaining, 15);
   assert.ok(tlsOk.days_remaining > 30);
+  // chain metadata: leaf subject + validity + per-cert entries persist
+  const okChain = JSON.parse(tlsOk.chain_json);
+  assert.ok(Array.isArray(okChain) && okChain.length >= 1, 'cert chain persisted per-cert');
+  assert.equal(okChain[0].subject, 'CN=fixture.test'); // X509Certificate DNs omit the leading '/'
+  assert.equal(okChain[0].selfSigned, true);
+  assert.equal(okChain[0].daysRemaining, tlsOk.days_remaining);
+  assert.equal(tlsOk.valid_chain, 1);
+  assert.equal(tlsOk.leaf_subject, 'CN=fixture.test');
+
 
   // alerts: soon is warn, okcert is ok, api is ok, api2 is error -> 2 alerts
   assert.ok(alerts.length >= 2);

@@ -198,6 +198,9 @@ async function cmdOnce(args) {
         method: r.method ?? null,                // http only
         status_code: r.statusCode ?? null,       // http only
         days_remaining: r.daysRemaining ?? null, // tls only
+        chain: r.chain ?? null,                  // tls only
+        valid_chain: r.validChain ?? null,       // tls only
+        leaf_subject: r.leafSubject ?? null,     // tls only
         p50_ms: r.p50Ms ?? null,                 // apm only
         error_rate: r.errorRate ?? null,         // apm only
         errors: r.errors ?? null,                // apm only

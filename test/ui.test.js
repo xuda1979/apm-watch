@@ -19,7 +19,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('http:api/status', 200, Date.now() - 4000);
   store.saveMetric('http:api/status', 503, Date.now());
   // tls target with days-remaining series
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d (threshold 30d)' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d (threshold 30d)' });
   store.saveMetric('tls:api/remaining', 12, Date.now());
   // apm target with p50/p95 series
   store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
@@ -65,6 +65,12 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   const apiTls = data.states.find((s) => s.target === 'api' && s.kind === 'tls');
   assert.equal(apiTls.status, 'warn');
   assert.match(apiTls.detail, /expires in 12d/);
+  // tls chain metadata is exposed to the browser UI
+  assert.equal(apiTls.leaf_subject, '/CN=fixture.test');
+  assert.equal(apiTls.valid_chain, true);
+  assert.deepEqual(apiTls.chain, [
+    { subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true },
+  ]);
   const svcApm = data.states.find((s) => s.target === 'svc' && s.kind === 'apm');
   // numeric per-kind fields are exposed to the browser UI
   assert.equal(apiHttp.status_code, null);          // http row: seeded without status_code -> null not undefined
@@ -131,7 +137,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
   store.setClock(() => Date.now() - 60000);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', detail: 'HTTP 200' });
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
   store.saveMetric('http:api/latency', 20, Date.now());
   store.saveMetric('http:api/status', 200, Date.now() - 2000);
@@ -151,6 +157,8 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /api/);
   assert.match(out, /http:GET ok:12ms 100%/); // single ok snapshot -> full-window uptime
   assert.match(out, /cert:expires in 12d/);
+  // leaf cert subject surfaces next to the tls detail
+  assert.match(out, /\(\/CN=fixture\.test\)/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
   // status-code history section renders per http target

@@ -10,7 +10,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', statusCode: 200, detail: 'HTTP 200' });
   now += 1000;
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', statusCode: 200, detail: 'HTTP 200' });
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, detail: 'expires in 12d' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
   store.saveState({ target: 'api', kind: 'apm', status: 'warn', latencyMs: 320, p50Ms: 200, errorRate: 0.1, errors: 1, samples: 10, detail: 'p50=200ms p95=320ms errors=1/10 (slow p95)' });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, statusCode: 503, detail: 'down' });
   const out = exportStatus(store, {});
@@ -19,6 +19,12 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.status, 'warn');
   assert.equal(api.http.latency_ms, 12);
   assert.equal(api.tls.detail, 'expires in 12d');
+  // cert-chain metadata surfaces on the export JSON snapshot
+  assert.equal(api.tls.leaf_subject, '/CN=fixture.test');
+  assert.equal(api.tls.valid_chain, true);
+  assert.deepEqual(api.tls.chain, [
+    { subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true },
+  ]);
   assert.equal(api.apm.status, 'warn');
   assert.equal(api.apm.latency_ms, 320);
   assert.match(api.apm.detail, /slow p95/);
