@@ -56,3 +56,18 @@ test('store: events + recent', () => {
   assert.equal(ev[0].level, 'error');
   s.close();
 });
+
+test('store: setMeta/getMeta persist json or plain strings per key', () => {
+  const s = new Store(':memory:');
+  assert.equal(s.getMeta('nope'), null);
+  s.setMeta('health', { status: 'warn', uptimeSince: 5, lastCheckAt: 9 });
+  s.setMeta('note', 'hello');
+  const health = s.getMeta('health');
+  assert.deepEqual(health.value, { status: 'warn', uptimeSince: 5, lastCheckAt: 9 });
+  assert.ok(Number.isFinite(health.ts));
+  assert.equal(s.getMeta('note').value, 'hello');
+  // overwrite replaces the previous value
+  s.setMeta('health', { status: 'ok' });
+  assert.equal(s.getMeta('health').value.status, 'ok');
+  s.close();
+});

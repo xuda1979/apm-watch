@@ -159,6 +159,27 @@ test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
 });
 
+test('ui: tui header shows monitor self-health from the health meta', async (t) => {
+  const store = new Store(':memory:');
+  store.setClock(() => Date.now());
+  store.setMeta('health', { status: 'warn', uptimeSince: Date.now() - 120000, lastCheckAt: Date.now() });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try {
+    tui.render();
+  } finally {
+    process.stdout.write = orig;
+  }
+  assert.match(out, /up 2m ago/);
+  assert.match(out, /monitor warn/);
+  assert.match(out, /last check \d+/);
+});
+
 test('ui: series are kept per target so multi-endpoint charts stay readable', async (t) => {
   const store = new Store(':memory:');
   // two http + one tls target, each with latency/remaining history
@@ -186,4 +207,38 @@ test('ui: series are kept per target so multi-endpoint charts stay readable', as
   assert.deepEqual(lat['api-a'].map((p) => p.value), [10, 20]);
   assert.deepEqual(lat['api-b'].map((p) => p.value), [50, 80]);
   assert.equal(data.series['tls:remaining']['api-b'][0].value, 30);
+});
+
+test('ui: monitor self-health from the engine status meta is exposed via the api', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.setMeta('health', { status: 'ok', uptimeSince: 1_700_000_000_000, lastCheckAt: 1_700_000_001_000 });
+  // page script appends the health line when the api returns lastCheckAt
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  const data = await res.json();
+  assert.deepEqual(data.health, {
+    status: 'ok',
+    uptimeSince: 1_700_000_000_000,
+    lastCheckAt: 1_700_000_001_000,
+  });
+  const html = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  // browser JS renders the health fields into the #meta status line
+  assert.match(html, /\$\('#meta'\)\.textContent = 'updated '/);
+  assert.match(html, /fmtAgo\(data\.health\.uptimeSince\)/);
+  assert.match(html, /last check ' \+ new Date\(data\.health\.lastCheckAt\)\.toLocaleTimeString\(\)/);
+});
+
+test('ui: api health is null when the engine has not persisted any yet', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  const data = await res.json();
+  assert.equal(data.health, null);
 });

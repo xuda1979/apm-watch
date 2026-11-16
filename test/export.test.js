@@ -68,3 +68,34 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   assert.match(html, /&quot;x&quot;/);
   setTimeout(store.close, 0);
 });
+
+test('export: health block surfaces monitor uptime/lastCheck in json + html', () => {
+  const store = new Store(':memory:');
+  const past = Date.now() - 300000;
+  store.setClock(() => past);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  // engine would have persisted its latest self-health summary here
+  store.setMeta('health', { status: 'warn', uptimeSince: past - 200000, lastCheckAt: past });
+  const out = exportStatus(store, {}, '1.2.3');
+  assert.deepEqual(out.health, {
+    status: 'warn',
+    uptimeSince: past - 200000,
+    lastCheckAt: past,
+  });
+  // html meta line shows monitor status + uptime for a non-empty health block
+  const html = renderStatusPage(out);
+  assert.match(html, /monitor warn/);
+  assert.match(html, /up 3m 20s/);   // lastCheck - uptimeSince = 200000 ms
+  assert.match(html, /last check /);
+  setTimeout(store.close, 0);
+});
+
+test('export: health is null when no monitor meta was persisted', () => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  const out = exportStatus(store, {});
+  assert.equal(out.health, null);
+  const html = renderStatusPage(out);
+  assert.doesNotMatch(html, /monitor /);
+  setTimeout(store.close, 0);
+});

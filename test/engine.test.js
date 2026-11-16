@@ -189,3 +189,30 @@ test('engine: per-check intervalSeconds overrides the scheduler-wide default', (
   assert.equal(find('http:closed'), 30_000);   // clamped to MIN_INTERVAL_S
   assert.equal(find('tls:cert'), 120_000); // unit string "2m"
 });
+
+test('engine: tick persists monitor self-health (uptime/lastCheck/status)', async (t) => {
+  const httpSrv = await startHttpServer({
+    '/ok': { status: 200, body: 'all good' },
+    '/bad': { status: 503, body: 'down' },
+  });
+  t.after(httpSrv.close);
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      http: [
+        { name: 'api', url: httpSrv.url + '/ok', assert: { statusCode: 200 } },
+        { name: 'api2', url: httpSrv.url + '/bad', assert: { statusCode: 200 } },
+      ],
+      notifications: { desktop: false },
+    },
+    log: () => {},
+  });
+  await engine.tick();
+  const h = store.getMeta('health');
+  assert.ok(h, 'health meta persisted');
+  assert.ok(Number.isFinite(h.value.uptimeSince));
+  assert.ok(Number.isFinite(h.value.lastCheckAt));
+  assert.ok(h.value.lastCheckAt >= h.value.uptimeSince);
+  assert.equal(h.value.status, 'error'); // api2 is down -> worst status
+});

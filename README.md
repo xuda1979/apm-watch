@@ -29,8 +29,12 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
     + 错误率曲线，阈值虚线；每个被监控目标一条独立彩色折线 + 图例，多目标
     不再合并成一条误导性的曲线）
 - **存储**：SQLite（`node:sqlite`，WAL）。`states`（状态快照）、`metrics`
-  （时间序列）、`events`（告警/审计）。引擎后台任务按
-  `store.retentionDays`（默认 7 天）自动裁剪旧数据，长跑不涨内存/磁盘。
+  （时间序列）、`events`（告警/审计）、`meta`（监控器自述：进程启动时刻、最近
+  一次 check 时间、本轮最差状态）。引擎后台任务按 `store.retentionDays`
+  （默认 7 天）自动裁剪旧数据，长跑不涨内存/磁盘。
+- **监控器自健康**：引擎每轮 tick 把 `uptimeSince`/`lastCheckAt`/当前最差状态
+  写入 store，Web 顶栏、TUI 表头、`export` 的 JSON 与 HTML 状态页统一展示
+  “up 时长 / 上次检查 / monitor 状态”。
 - **`export`**：导出当前健康状态为 JSON（`--out file.json`）或**自包含 HTML 状态页**
   （`--out status.html`，零依赖单文件，可直接扔到静态托管/CDN）。
 
@@ -104,8 +108,8 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 66 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
-                     #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
+npm test             # 全部 73 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+                     #   STARTTLS 升级、web/TUI UI、可用率、监控器自健康、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```
 
