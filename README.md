@@ -10,7 +10,7 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 ## 功能
 
 - **HTTP(S) 探测**：状态码断言 + 响应体关键字（`bodyIncludes`）断言，返回
-  状态码/延迟，超时（默认 5s）与连接失败记为 `error`。可选
+  请求方法/状态码/延迟，超时（默认 5s）与连接失败记为 `error`。可选
   `latencyThresholdMs`：超过阈值的慢响应（但状态断言通过）记为 `warn`——黄色，
   不再伪装成健康绿。每个目标按 state 快照历史计算**时间加权可用率**
   （uptime%，warn 计为在线，与 Datadog 口径一致），显示在 Web 表格、导出
@@ -62,12 +62,12 @@ apm-watch --version | -V
 `once` 跑一遍所有 check 并逐条打印结果，退出码按最差状态给出：`0` 全部
 ok、`1` 有 warn（如慢响应/证书临近到期）、`2` 有 error —— 可以直接挂到
 cron / CI 当冒烟检查。加 `--json` 则把结果（含 `exit_code` 与每个 check 的
-`target`/`kind`/`status`/`latency_ms`/`status_code`/`days_remaining`/`p50_ms`/
-`error_rate`/`errors`/`samples`/`detail`，其中 `status_code` 仅 http、
-`days_remaining` 仅 tls、`p50_ms`/`error_rate`/`errors`/`samples` 仅 apm，
-其余为 `null`）作为单个 JSON 文档打到 stdout，engine 日志走 stderr，方便
-脚本解析。`--version` 打印版本号并退出（不带则默认启动 `run`，别和 `run`
-子命令混淆）。
+`target`/`kind`/`status`/`latency_ms`/`method`/`status_code`/`days_remaining`/
+`p50_ms`/`error_rate`/`errors`/`samples`/`detail`，其中 `method` 与
+`status_code` 仅 http、`days_remaining` 仅 tls、`p50_ms`/`error_rate`/
+`errors`/`samples` 仅 apm，其余为 `null`）作为单个 JSON 文档打到 stdout，
+engine 日志走 stderr，方便脚本解析。`--version` 打印版本号并退出（不带则
+默认启动 `run`，别和 `run` 子命令混淆）。
 
 ## 配置
 
@@ -116,7 +116,7 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 90 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 92 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、监控器自健康、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```

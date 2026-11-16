@@ -13,7 +13,7 @@ async function listen(server, port = 0) {
 test('ui: web server serves the page and a live-state JSON API with series', async (t) => {
   const store = new Store(':memory:');
   // http target with history
-  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200 in 12.0ms' });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', detail: 'HTTP 200 in 12.0ms' });
   store.saveMetric('http:api/latency', 10, Date.now() - 4000);
   store.saveMetric('http:api/latency', 15, Date.now());
   store.saveMetric('http:api/status', 200, Date.now() - 4000);
@@ -61,6 +61,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   const apiHttp = data.states.find((s) => s.target === 'api' && s.kind === 'http');
   assert.equal(apiHttp.status, 'ok');
   assert.equal(apiHttp.latency_ms, 12);
+  assert.equal(apiHttp.method, 'POST');
   const apiTls = data.states.find((s) => s.target === 'api' && s.kind === 'tls');
   assert.equal(apiTls.status, 'warn');
   assert.match(apiTls.detail, /expires in 12d/);
@@ -129,7 +130,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   const store = new Store(':memory:');
   // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
   store.setClock(() => Date.now() - 60000);
-  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
   store.saveMetric('http:api/latency', 20, Date.now());
@@ -148,7 +149,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   }
   assert.match(out, /apm-watch/);
   assert.match(out, /api/);
-  assert.match(out, /http:ok:12ms 100%/); // single ok snapshot -> full-window uptime
+  assert.match(out, /http:GET ok:12ms 100%/); // single ok snapshot -> full-window uptime
   assert.match(out, /cert:expires in 12d/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);

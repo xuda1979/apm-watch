@@ -56,6 +56,8 @@ test('engine: runs http + tls checks and persists + alerts on cert expiry', asyn
   // numeric per-kind fields persist through the store for the export/web surfaces
   assert.equal(api.status_code, 200);
   assert.equal(api2.status_code, 503);
+  assert.equal(api.method, 'GET');
+  assert.equal(api2.method, 'GET');
   assert.equal(tlsSoon.days_remaining, 15);
   assert.ok(tlsOk.days_remaining > 30);
 
@@ -80,6 +82,7 @@ test('engine: dead/unresponsive endpoint -> error, JSON body assert works', asyn
   await engine.runHttpCheck(engine.config.http[0]);
   const latest = store.latestStates()[0];
   assert.equal(latest.status, 'ok');
+  assert.equal(latest.method, 'GET', 'default verb persists into the states row');
 
   // timeout target
   const hangSrv = await startHttpServer({ '/x': { hang: true } });

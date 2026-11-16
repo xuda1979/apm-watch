@@ -80,7 +80,7 @@ test('store: saveState persists numeric per-kind fields and round-trips them', (
   const s = new Store(':memory:');
   let now = 1000;
   s.setClock(() => now);
-  s.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, statusCode: 200, detail: 'HTTP 200' });
+  s.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', statusCode: 200, detail: 'HTTP 200' });
   now += 500;
   s.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, detail: 'expires in 12d' });
   now += 500;
@@ -89,6 +89,7 @@ test('store: saveState persists numeric per-kind fields and round-trips them', (
   const http = latest.find((r) => r.kind === 'http');
   const tls = latest.find((r) => r.kind === 'tls');
   const apm = latest.find((r) => r.kind === 'apm');
+  assert.equal(http.method, 'POST');
   assert.equal(http.status_code, 200);
   assert.equal(http.latency_ms, 12);
   assert.equal(tls.days_remaining, 12);
@@ -126,7 +127,7 @@ test('store: states migration adds numeric columns to an old-schema database', (
     // existing history and adding every numeric column used by the surfaces.
     const s = new Store(dbPath);
     const cols = new Set(s.db.prepare('PRAGMA table_info(states)').all().map((c) => c.name));
-    for (const name of ['status_code', 'days_remaining', 'p50_ms', 'error_rate', 'errors', 'samples']) {
+    for (const name of ['method', 'status_code', 'days_remaining', 'p50_ms', 'error_rate', 'errors', 'samples']) {
       assert.ok(cols.has(name), `migration must add column ${name}`);
     }
     // pre-existing rows are untouched by the migration and get NULL numerics

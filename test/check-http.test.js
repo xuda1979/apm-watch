@@ -9,7 +9,17 @@ test('http checker: 200 with expected status passes', async (t) => {
   const res = await checkEndpoint({ url: srv.url + '/ok', assert: { statusCode: 200 } });
   assert.equal(res.status, 'ok');
   assert.equal(res.statusCode, 200);
+  assert.equal(res.method, 'GET', 'default verb surfaces as GET');
   assert.ok(res.latencyMs >= 0);
+});
+
+test('http checker: custom method is applied and reported', async (t) => {
+  const srv = await startHttpServer({ '/post': { status: 201, body: 'created' } });
+  t.after(srv.close);
+  const res = await checkEndpoint({ url: srv.url + '/post', method: 'post', assert: { statusCode: 201 } });
+  assert.equal(res.status, 'ok');
+  assert.equal(res.statusCode, 201);
+  assert.equal(res.method, 'POST', 'configured verb is normalized and reported');
 });
 
 test('http checker: 404 reported as error', async (t) => {

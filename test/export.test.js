@@ -7,9 +7,9 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   const store = new Store(':memory:');
   let now = Date.now();
   store.setClock(() => now);
-  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, statusCode: 200, detail: 'HTTP 200' });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', statusCode: 200, detail: 'HTTP 200' });
   now += 1000;
-  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, statusCode: 200, detail: 'HTTP 200' });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'POST', statusCode: 200, detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, detail: 'expires in 12d' });
   store.saveState({ target: 'api', kind: 'apm', status: 'warn', latencyMs: 320, p50Ms: 200, errorRate: 0.1, errors: 1, samples: 10, detail: 'p50=200ms p95=320ms errors=1/10 (slow p95)' });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, statusCode: 503, detail: 'down' });
@@ -23,6 +23,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.apm.latency_ms, 320);
   assert.match(api.apm.detail, /slow p95/);
   // numeric per-kind fields surface on the export JSON snapshot
+  assert.equal(api.http.method, 'POST', 'http verb surfaces on the export JSON snapshot');
   assert.equal(api.http.status_code, 200);
   assert.equal(api.tls.days_remaining, 12);
   assert.equal(api.apm.p50_ms, 200);

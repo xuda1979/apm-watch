@@ -145,9 +145,31 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(ok.status, 'ok');
   assert.equal(slow.status, 'warn');
   assert.equal(slow.kind, 'http');
+  assert.equal(ok.method, 'GET', 'http-only method field surfaces the configured verb');
+  assert.equal(slow.method, 'GET');
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
+});
+
+test('cli: once --json reports the configured http verb (POST) per check', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/submit': { status: 201, body: 'created' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'verb.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'submit-svc', url: srv.url + '/submit', method: 'POST', assert: { statusCode: 201 } }],
+    store: { path: path.join(dir, 'verb.db') },
+  }));
+  const { code, stdout } = await runOnceJson(cfg);
+  assert.equal(code, 0, `stdout:\n${stdout}`);
+  const doc = JSON.parse(stdout);
+  const r = doc.results.find((x) => x.target === 'submit-svc');
+  assert.equal(r.status, 'ok');
+  assert.equal(r.status_code, 201);
+  assert.equal(r.method, 'POST', 'explicit method flows into once --json');
 });
 
 test('cli: once --json includes numeric days_remaining for tls checks', async (t) => {

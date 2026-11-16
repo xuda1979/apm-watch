@@ -195,6 +195,7 @@ async function cmdOnce(args) {
       results: results.map((r) => ({
         target: r.target, kind: r.kind, status: r.status,
         latency_ms: r.latencyMs ?? null,
+        method: r.method ?? null,                // http only
         status_code: r.statusCode ?? null,       // http only
         days_remaining: r.daysRemaining ?? null, // tls only
         p50_ms: r.p50Ms ?? null,                 // apm only
@@ -207,7 +208,8 @@ async function cmdOnce(args) {
     return;
   }
   for (const r of results) {
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${r.detail}`);
+    const verb = r.method ? r.method + ' ' : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${r.detail}`);
   }
 }
 
