@@ -10,9 +10,11 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 ## 功能
 
 - **HTTP(S) 探测**：状态码断言 + 响应体关键字（`bodyIncludes`）断言，返回
-  状态码/延迟，超时（默认 5s）与连接失败记为 `error`。每个目标按
-  state 快照历史计算**时间加权可用率**（uptime%，warn 计为在线，与
-  Datadog 口径一致），显示在 Web 表格、导出 JSON 与 HTML 状态页。
+  状态码/延迟，超时（默认 5s）与连接失败记为 `error`。可选
+  `latencyThresholdMs`：超过阈值的慢响应（但状态断言通过）记为 `warn`——黄色，
+  不再伪装成健康绿。每个目标按 state 快照历史计算**时间加权可用率**
+  （uptime%，warn 计为在线，与 Datadog 口径一致），显示在 Web 表格、导出
+  JSON 与 HTML 状态页。
 - **TLS 证书扫描**：通过 `tls.connect` 拉取真实服务器证书链，报告剩余天数；
   也支持纯 PEM 文件检查（`inspectPemChain` / tls 配置中的 `pemFile`），
   适合离线或无法直连的证书文件。
@@ -59,6 +61,7 @@ apm-watch serve [--config FILE] [--port PORT]
   "http": [
     { "name": "api", "url": "https://example.com/health", "method": "GET",
       "timeoutMs": 5000,
+      "latencyThresholdMs": 400,
       "assert": { "statusCode": 200, "bodyIncludes": "ok" } }
   ],
   "tls": [
@@ -96,7 +99,7 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 59 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 61 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```

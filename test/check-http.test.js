@@ -51,3 +51,22 @@ test('http checker: connection refused -> error', async () => {
   assert.equal(res.status, 'error');
   assert.ok(res.detail);
 });
+
+test('http checker: latencyThresholdMs demotes slow-but-ok to warn', async (t) => {
+  // simulate a 200 response that crosses the threshold
+  const srv = await startHttpServer({ '/slow': { status: 200, body: 'ok', delayMs: 80 } });
+  t.after(srv.close);
+  const fast = await checkEndpoint({ url: srv.url + '/slow', latencyThresholdMs: 400 });
+  assert.equal(fast.status, 'ok', 'fast response under threshold stays ok');
+  const slow = await checkEndpoint({ url: srv.url + '/slow', latencyThresholdMs: 1 });
+  assert.equal(slow.status, 'warn', 'slow response over threshold demotes to warn');
+  assert.match(slow.detail, /slow:/);
+});
+
+test('http checker: latency warn does not mask hard errors', async (t) => {
+  const srv = await startHttpServer({ '/missing': { status: 404, body: 'nope' } });
+  t.after(srv.close);
+  const res = await checkEndpoint({ url: srv.url + '/missing', assert: { statusCode: 200 }, latencyThresholdMs: 1 });
+  assert.equal(res.status, 'error', 'status assertion failure stays error');
+  assert.match(res.detail, /expected status 200/);
+});
