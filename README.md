@@ -26,7 +26,8 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 - **UI**：
   - `tui`：终端面板（绿/黄/红 + latency sparkline + APM p50/p95 与错误率 sparkline）
   - `web`：单页（状态表格 + 三层曲线：latency / TLS 剩余天数 / APM p50/p95
-    + 错误率曲线，阈值虚线）
+    + 错误率曲线，阈值虚线；每个被监控目标一条独立彩色折线 + 图例，多目标
+    不再合并成一条误导性的曲线）
 - **存储**：SQLite（`node:sqlite`，WAL）。`states`（状态快照）、`metrics`
   （时间序列）、`events`（告警/审计）。引擎后台任务按
   `store.retentionDays`（默认 7 天）自动裁剪旧数据，长跑不涨内存/磁盘。
@@ -103,7 +104,7 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 65 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 66 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```

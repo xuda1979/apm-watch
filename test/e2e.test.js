@@ -97,10 +97,16 @@ test('e2e: full monitor — accurate status, cert countdown, cert alert, APM per
   const data = await getJson(`http://127.0.0.1:${port}/api/states`);
   assert.ok(data.states.some((s) => s.target === 'hang-svc' && s.status === 'error'));
   assert.ok(data.states.some((s) => s.target === 'cert-soon' && s.status === 'warn'));
-  assert.ok(data.series['http:latency'].length >= 3);
-  assert.ok(data.series['tls:remaining'].some((p) => p.value <= 15), 'tls series has the 15d point');
-  assert.ok(data.series['apm:p50'].length >= 1);
-  assert.ok(data.series['apm:p95'].length >= 1);
+  // series are keyed per target; after two ticks each http target has one
+  // latency point per tick (the timing-out target records its timeout too)
+  const latSeries = data.series['http:latency'];
+  const keys = Object.keys(latSeries);
+  assert.deepEqual(keys.sort(), ['hang-svc', 'missing-svc', 'ok-svc']);
+  for (const k of keys) assert.equal(latSeries[k].length, 2, `${k} has one point per tick`);
+  const tlsFlat = Object.values(data.series['tls:remaining']).flat();
+  assert.ok(tlsFlat.some((p) => p.value <= 15), 'tls series has the 15d point');
+  assert.ok(Object.values(data.series['apm:p50']).some((pts) => pts.length >= 1));
+  assert.ok(Object.values(data.series['apm:p95']).some((pts) => pts.length >= 1));
 
   store.close();
 });

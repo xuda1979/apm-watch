@@ -59,15 +59,19 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiTls.status, 'warn');
   assert.match(apiTls.detail, /expires in 12d/);
 
-  // history curves present and in the right, monotonically-increasing ts space
-  assert.ok(data.series['http:latency'].length >= 2);
-  assert.ok(data.series['tls:remaining'].length >= 1);
-  assert.ok(data.series['apm:p50'].length >= 1);
-  assert.ok(data.series['apm:p95'].length >= 1);
-  assert.ok(data.series['apm:errorRate'].length >= 1);
-  assert.equal(data.series['apm:errorRate'][0].value, 0.1);
+  // history curves present, keyed per target (so the browser can draw one
+  // line per endpoint), points in seconds ts space
+  assert.equal(typeof data.series['http:latency'], 'object');
+  assert.equal(typeof data.series['http:latency']['api'], 'object');
+  assert.ok(Array.isArray(data.series['http:latency']['api']));
+  assert.ok(data.series['http:latency']['api'].length >= 2);
+  assert.ok(data.series['tls:remaining']['api'].length >= 1);
+  assert.ok(data.series['apm:p50']['svc'].length >= 1);
+  assert.ok(data.series['apm:p95']['svc'].length >= 1);
+  assert.ok(data.series['apm:errorRate']['svc'].length >= 1);
+  assert.equal(data.series['apm:errorRate']['svc'][0].value, 0.1);
   assert.equal(data.apm.errorRateThreshold, 0.05); // default threshold
-  for (const pt of data.series['http:latency']) {
+  for (const pt of data.series['http:latency']['api']) {
     assert.equal(typeof pt.ts, 'number');
     assert.equal(typeof pt.value, 'number');
   }
@@ -153,4 +157,33 @@ test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (
   assert.match(out, /err 3\.0%/);
   // both latency and error-rate sparklines render glyph blocks
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
+});
+
+test('ui: series are kept per target so multi-endpoint charts stay readable', async (t) => {
+  const store = new Store(':memory:');
+  // two http + one tls target, each with latency/remaining history
+  for (const { target, latency, remaining } of [
+    { target: 'api-a', latency: [10, 20], remaining: null },
+    { target: 'api-b', latency: [50, 80], remaining: 30 },
+  ]) {
+    store.saveState({ target, kind: 'http', status: 'ok', latencyMs: latency[1], detail: 'HTTP 200' });
+    store.saveMetric(`http:${target}/latency`, latency[0], Date.now() - 2000);
+    store.saveMetric(`http:${target}/latency`, latency[1], Date.now());
+    if (remaining != null) {
+      store.saveState({ target, kind: 'tls', status: 'warn', detail: `expires in ${remaining}d` });
+      store.saveMetric(`tls:${target}/remaining`, remaining, Date.now());
+    }
+  }
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  const data = await res.json();
+  const lat = data.series['http:latency'];
+  assert.deepEqual(Object.keys(lat).sort(), ['api-a', 'api-b']);
+  // each target keeps its own values — no cross-target merging
+  assert.deepEqual(lat['api-a'].map((p) => p.value), [10, 20]);
+  assert.deepEqual(lat['api-b'].map((p) => p.value), [50, 80]);
+  assert.equal(data.series['tls:remaining']['api-b'][0].value, 30);
 });
