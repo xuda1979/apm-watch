@@ -53,6 +53,12 @@ test('engine: runs http + tls checks and persists + alerts on cert expiry', asyn
   assert.match(tlsSoon.detail, /expires in \d+d/, `detail=${tlsSoon.detail}`);
   assert.equal(tlsOk.status, 'ok');
 
+  // numeric per-kind fields persist through the store for the export/web surfaces
+  assert.equal(api.status_code, 200);
+  assert.equal(api2.status_code, 503);
+  assert.equal(tlsSoon.days_remaining, 15);
+  assert.ok(tlsOk.days_remaining > 30);
+
   // alerts: soon is warn, okcert is ok, api is ok, api2 is error -> 2 alerts
   assert.ok(alerts.length >= 2);
   const warnAlerts = alerts.filter((a) => a.status === 'warn' && a.target === 'soon');
@@ -114,6 +120,13 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.match(slowAlert.detail, /slow p95/);
   const warnEvent = store.recentEvents().find((e) => e.source === 'apm' && e.message.includes('slow'));
   assert.ok(warnEvent, 'slow apm service recorded an event');
+  // the same numeric fields persist into the states rows for export/web surfaces
+  const slowState = store.latestStates().find((s) => s.target === 'slow');
+  assert.equal(slowState.p50_ms, summary.slow.p50);
+  assert.equal(slowState.error_rate, 0.1);
+  assert.equal(slowState.errors, 1);
+  assert.equal(slowState.samples, 10);
+  assert.equal(slowState.latency_ms, summary.slow.p95);
 
   // fast service: p95 under latency threshold, low errors -> ok
   for (let i = 0; i < 10; i++) {

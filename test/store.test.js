@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Store } from '../lib/store.js';
+import { DatabaseSync } from 'node:sqlite';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 test('store: saveState + latestStates + history', () => {
   const s = new Store(':memory:');
@@ -70,4 +74,71 @@ test('store: setMeta/getMeta persist json or plain strings per key', () => {
   s.setMeta('health', { status: 'ok' });
   assert.equal(s.getMeta('health').value.status, 'ok');
   s.close();
+});
+
+test('store: saveState persists numeric per-kind fields and round-trips them', () => {
+  const s = new Store(':memory:');
+  let now = 1000;
+  s.setClock(() => now);
+  s.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, statusCode: 200, detail: 'HTTP 200' });
+  now += 500;
+  s.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, detail: 'expires in 12d' });
+  now += 500;
+  s.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 320, p50Ms: 200, errorRate: 0.1, errors: 1, samples: 10, detail: 'slow' });
+  const latest = s.latestStates();
+  const http = latest.find((r) => r.kind === 'http');
+  const tls = latest.find((r) => r.kind === 'tls');
+  const apm = latest.find((r) => r.kind === 'apm');
+  assert.equal(http.status_code, 200);
+  assert.equal(http.latency_ms, 12);
+  assert.equal(tls.days_remaining, 12);
+  assert.equal(apm.p50_ms, 200);
+  assert.equal(apm.error_rate, 0.1);
+  assert.equal(apm.errors, 1);
+  assert.equal(apm.samples, 10);
+  assert.equal(apm.latency_ms, 320);
+  // history rows carry the stored numeric column too
+  const hist = s.history('api', 'tls', 0);
+  assert.equal(hist[0].days_remaining, 12);
+  s.close();
+});
+
+test('store: states migration adds numeric columns to an old-schema database', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-migrate-'));
+  const dbPath = path.join(dir, 'old.db');
+  try {
+    // Simulate a DB created before the per-kind numeric columns existed.
+    const raw = new DatabaseSync(dbPath);
+    raw.exec(`
+      CREATE TABLE states (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts INTEGER NOT NULL,
+        target TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        latency_ms REAL,
+        detail TEXT
+      );
+    `);
+    raw.close();
+
+    // Opening through the Store must ALTER the old table in place, keeping
+    // existing history and adding every numeric column used by the surfaces.
+    const s = new Store(dbPath);
+    const cols = new Set(s.db.prepare('PRAGMA table_info(states)').all().map((c) => c.name));
+    for (const name of ['status_code', 'days_remaining', 'p50_ms', 'error_rate', 'errors', 'samples']) {
+      assert.ok(cols.has(name), `migration must add column ${name}`);
+    }
+    // pre-existing rows are untouched by the migration and get NULL numerics
+    s.db.prepare('INSERT INTO states (ts, target, kind, status) VALUES (1, ?, ?, ?)')
+      .run('old', 'http', 'ok');
+    s.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, statusCode: 200, detail: 'HTTP 200' });
+    const rows = s.latestStates();
+    assert.equal(rows.length, 2, 'old history survives the migration');
+    assert.equal(rows.find((r) => r.target === 'old').status_code, null);
+    assert.equal(rows.find((r) => r.target === 'api').status_code, 200);
+    s.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

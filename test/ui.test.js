@@ -58,6 +58,15 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   const apiTls = data.states.find((s) => s.target === 'api' && s.kind === 'tls');
   assert.equal(apiTls.status, 'warn');
   assert.match(apiTls.detail, /expires in 12d/);
+  const svcApm = data.states.find((s) => s.target === 'svc' && s.kind === 'apm');
+  // numeric per-kind fields are exposed to the browser UI
+  assert.equal(apiHttp.status_code, null);          // http row: seeded without status_code -> null not undefined
+  assert.equal(apiHttp.days_remaining, null);
+  assert.equal(svcApm.status, 'ok');
+  assert.equal(svcApm.p50_ms, null);                // apm row: seeded without numerics -> null
+  assert.equal(svcApm.error_rate, null);
+  assert.equal(svcApm.errors, null);
+  assert.equal(svcApm.samples, null);
 
   // history curves present, keyed per target (so the browser can draw one
   // line per endpoint), points in seconds ts space

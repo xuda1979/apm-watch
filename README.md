@@ -115,7 +115,7 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 84 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 86 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、监控器自健康、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```
