@@ -109,7 +109,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cfg = path.join(dir, 'apm-only.json');
   writeFileSync(cfg, JSON.stringify({
-    apm: { collect: true, errorRateThreshold: 0.05 },
+    apm: { collect: true, errorRateThreshold: 0.12 },
     store: { path: path.join(dir, 'apm-only.db') },
   }));
   // No agent is feeding the collector in this fresh process, so the APM
@@ -117,6 +117,11 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   // shape and `once` completes without crashing.
   const { code, stderr } = await runOnce(cfg);
   assert.equal(code, 0, `stderr:\n${stderr}`);
+  // the configured threshold closes the data-surface gap with the web api
+  const { code: jcode, stdout: jstdout } = await runOnceJson(cfg);
+  assert.equal(jcode, 0, `stderr:\n${jstdout}`);
+  const doc = JSON.parse(jstdout);
+  assert.equal(doc.apm.errorRateThreshold, 0.12, 'configured apm threshold surfaces in once --json');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
