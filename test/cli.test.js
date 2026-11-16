@@ -325,6 +325,56 @@ test('cli: serve boots the web UI over an existing store and serves states + pag
   assert.match(page, /api\/states/);
 });
 
+test('cli: run boots the full monitor loop and serves live state over web', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'run.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'run.db') },
+    notifications: { desktop: false },
+  }));
+
+  // `--ui web --ui-port 0` lets the OS assign a port; run reports it on stdout,
+  // then the scheduler fires the first check within ~2s (random initial delay).
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'web', '--ui-port', '0'], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`run did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // poll the live API until the engine's first scheduled check lands
+  let states = null;
+  for (let i = 0; i < 30 && !states; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+    const data = await res.json();
+    if (data.states.length) states = data;
+    else await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.ok(states, `engine wrote a live state within the poll window\nstderr:\n${stderr}`);
+  const ok = states.states.find((s) => s.target === 'ok-svc');
+  assert.ok(ok, 'scheduled check result served by the run API');
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.status_code, 200, 'numeric status_code served on the run path');
+  assert.ok(states.health, 'engine persists monitor self-health on the run path');
+  assert.equal(states.health.status, 'ok');
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert.match(page, /apm-watch/);
+  assert.match(page, /api\/states/);
+});
+
 test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
