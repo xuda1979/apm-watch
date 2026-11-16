@@ -204,7 +204,7 @@ async function cmdOnce(args) {
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
-      apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000 },
+      apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
       results: results.map(onceJsonRow),
     }, null, 2));
     return;

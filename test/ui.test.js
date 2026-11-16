@@ -27,7 +27,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('apm:svc/p95', 40, Date.now());
   store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
-  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000 }, http: [{ name: 'api', latencyThresholdMs: 200 }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30 }] });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200 }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30 }] });
   const port = await listen(server);
   t.after(() => new Promise((r) => server.close(r)));
 
@@ -107,6 +107,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.apm.errorRateThreshold, 0.05); // default threshold
   assert.equal(data.apm.latencyThresholdMs, 500);  // configured slow-latency threshold
   assert.equal(data.apm.windowMs, 90_000);         // configured collector window
+  assert.equal(data.apm.maxSamples, 7);            // configured collector sample-cap
   assert.deepEqual(data.http.latencyThresholds, { api: 200 }, 'per-target latency thresholds reach the web api');
   assert.deepEqual(data.tls.warnDaysBefore, { api: 30 }, 'per-target cert warn thresholds reach the web api');
   // the cTls chart is drawn with the per-target threshold map so the browser can

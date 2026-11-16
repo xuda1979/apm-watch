@@ -144,7 +144,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cfg = path.join(dir, 'apm-only.json');
   writeFileSync(cfg, JSON.stringify({
-    apm: { collect: true, errorRateThreshold: 0.12, latencyThresholdMs: 800, windowMs: 120_000 },
+    apm: { collect: true, errorRateThreshold: 0.12, latencyThresholdMs: 800, windowMs: 120_000, maxSamples: 3 },
     store: { path: path.join(dir, 'apm-only.db') },
   }));
   // No agent is feeding the collector in this fresh process, so the APM
@@ -159,6 +159,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.apm.errorRateThreshold, 0.12, 'configured apm threshold surfaces in once --json');
   assert.equal(doc.apm.latencyThresholdMs, 800, 'configured apm slow-latency threshold surfaces in once --json');
   assert.equal(doc.apm.windowMs, 120_000, 'configured collector window surfaces in once --json');
+  assert.equal(doc.apm.maxSamples, 3, 'configured collector sample-cap surfaces in once --json');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
