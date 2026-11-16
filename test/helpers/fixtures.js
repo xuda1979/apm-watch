@@ -22,10 +22,20 @@ function isoAfterDays(days) {
   return d.toISOString().replace(/[-:T.]/g, '').replace(/\d{3}Z/, 'Z');
 }
 
+// Bump `certSeq` so parallel node --test processes (each test file runs as a
+// separate process) never write the same key/cert file at once: two test files
+// both call makeCert(days) for identical days, and concurrent openssl writes to
+// a shared path tear the file and make the TLS handshake fail intermittently.
+// Include process.pid: node --test runs each test file as a separate process,
+// so a per-process counter alone would still collide (two files both calling
+// makeCert(15) would write the same "…-1.pem" path). pid + counter keeps every
+// key/cert pair unique across concurrent processes and repeated calls.
+const PID_TAG = process.pid;
+let certSeq = 0;
 export function makeCert(days, cn = 'fixture.test') {
   mkdirSync(FIXTURES, { recursive: true });
-  const keyFile = path.join(FIXTURES, `key-${cn}-${days}.pem`);
-  const certFile = path.join(FIXTURES, `cert-${cn}-${days}.pem`);
+  const keyFile = path.join(FIXTURES, `key-${cn}-${days}-${PID_TAG}-${++certSeq}.pem`);
+  const certFile = path.join(FIXTURES, `cert-${cn}-${days}-${PID_TAG}-${++certSeq}.pem`);
   // openssl refuses an end-date before the start-date; for past/expired certs
   // set an explicit notBefore in the past too and notAfter at now+(days).
   const validity =
