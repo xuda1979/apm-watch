@@ -50,6 +50,12 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // refresh() targets the meta <p> by id, not the <meta charset> tag, so the
   // status line actually updates instead of forever showing "loading…"
   assert.match(html, /\$\('#meta'\)\.textContent = 'updated '/);
+  // the browser-side table renderers surface tls chain metadata (leaf subject,
+  // broken-chain marker, and per-cert rows in a hover tooltip)
+  assert.match(html, /s\.kind === 'tls'/);
+  assert.match(html, /s\.leaf_subject/);
+  assert.match(html, /chain broken/);
+  assert.match(html, /self-signed/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
