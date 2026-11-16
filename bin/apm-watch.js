@@ -29,6 +29,7 @@ Commands:
   run     start the full monitor (checks + store + UI + alerts)
   demo    run a simulated APM demo service reporting to a collector
   once    run each check a single time and print results
+          (exit 0 = all ok, 1 = any warn, 2 = any error — cron/CI friendly)
   export  write current status as JSON for a status page
   serve   start only the web UI over an existing store
 `);
@@ -153,14 +154,31 @@ async function cmdOnce(args) {
   ensureStoreDir(storePath);
   const store = new Store(storePath);
   const engine = new Engine({ store, config });
+  const results = [];
   for (const h of config.http || []) {
     const r = await engine.runHttpCheck(h);
+    results.push(r);
     console.log(`${emoji(r.status)} http ${r.target}: ${r.detail}`);
   }
   for (const t of config.tls || []) {
     const r = await engine.runTlsCheck(t);
+    results.push(r);
     console.log(`${emoji(r.status)} tls ${r.target}: ${r.detail}`);
   }
+  // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
+  // 0 = all ok, 1 = any warn, 2 = any error. Matching Nagios conventions.
+  process.exitCode = worstStatus(results);
+}
+
+// Severity rank across the ok/warn/error status set. warn is "soft" failure,
+// error is "hard" — used to pick the process exit code for `once`.
+export function worstStatus(results, { warnExit = 1, errorExit = 2 } = {}) {
+  let code = 0;
+  for (const r of results) {
+    if (r.status === 'error') return errorExit;
+    if (r.status === 'warn') code = warnExit;
+  }
+  return code;
 }
 
 function emoji(s) { return s === 'ok' ? 'OK' : s === 'warn' ? 'WS' : '!!'; }

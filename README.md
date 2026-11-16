@@ -52,6 +52,10 @@ apm-watch export [--config FILE] [--out FILE]
 apm-watch serve [--config FILE] [--port PORT]
 ```
 
+`once` 跑一遍所有 check 并逐条打印结果，退出码按最差状态给出：`0` 全部
+ok、`1` 有 warn（如慢响应/证书临近到期）、`2` 有 error —— 可以直接挂到
+cron / CI 当冒烟检查。
+
 ## 配置
 
 默认读取 CWD 下 `apm-watch.json`（或 `.apm-watch.json`）。缺省时使用空配置。
@@ -99,7 +103,7 @@ scheduler 间隔无法解析等都会在启动时立刻报出可读错误并退�
 ## 测试
 
 ```bash
-npm test             # 全部 61 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 65 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```
