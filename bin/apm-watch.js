@@ -199,11 +199,12 @@ async function cmdOnce(args) {
       exit_code: process.exitCode,
       results: results.map((r) => ({
         target: r.target, kind: r.kind, status: r.status,
+        ts: r.ts ?? null,
         latency_ms: r.latencyMs ?? null,
         method: r.method ?? null,                // http only
         status_code: r.statusCode ?? null,       // http only
         days_remaining: r.daysRemaining ?? null, // tls only
-        chain: r.chain ?? null,                  // tls only
+        chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
         valid_chain: r.validChain ?? null,       // tls only
         leaf_subject: r.leafSubject ?? null,     // tls only
         p50_ms: r.p50Ms ?? null,                 // apm only

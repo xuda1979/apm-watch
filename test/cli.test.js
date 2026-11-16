@@ -145,6 +145,7 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(ok.status, 'ok');
   assert.equal(slow.status, 'warn');
   assert.equal(slow.kind, 'http');
+  assert.equal(typeof ok.ts, 'number', 'http results carry a per-result timestamp');
   assert.equal(ok.method, 'GET', 'http-only method field surfaces the configured verb');
   assert.equal(slow.method, 'GET');
   // stdout is a pure JSON document — engine status lines go to stderr, never
@@ -188,9 +189,35 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   const tls = doc.results.find((r) => r.target === 'cert-soon');
   assert.equal(tls.kind, 'tls');
   assert.equal(tls.status, 'warn');
+  assert.equal(typeof tls.ts, 'number', 'per-result timestamp surfaces, like the web api and export json');
   assert.equal(typeof tls.days_remaining, 'number');
   assert.equal(tls.days_remaining, 15);
   assert.equal(tls.status_code, null, 'http-only field is null for tls');
+  assert.equal(Array.isArray(tls.chain), true);
+  assert.ok(tls.chain.length >= 1, 'valid leaf cert -> chain entries present');
+  assert.equal(typeof tls.valid_chain, 'boolean');
+  assert.equal(tls.leaf_subject, tls.chain[0].subject);
+});
+
+test('cli: once --json nulls the chain when a tls check fails', async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'tls-fail.json');
+  writeFileSync(cfg, JSON.stringify({
+    tls: [{ name: 'broken-cert', pemFile: path.join(dir, 'missing.pem'), warnDaysBefore: 30 }],
+    store: { path: path.join(dir, 'tls-fail.db') },
+  }));
+  const { code, stdout, stderr } = await runOnceJson(cfg);
+  assert.equal(code, 2, `failed tls -> exit 2\nstderr:\n${stderr}`);
+  const doc = JSON.parse(stdout);
+  const tls = doc.results.find((r) => r.target === 'broken-cert');
+  assert.equal(tls.kind, 'tls');
+  assert.equal(tls.status, 'error');
+  assert.equal(tls.days_remaining, null);
+  assert.equal(tls.chain, null, 'error/empty chain normalizes to null, matching the web api and export json');
+  assert.equal(tls.valid_chain, false);
+  assert.equal(tls.leaf_subject, null);
+  assert.equal(typeof tls.ts, 'number');
 });
 
 test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {
