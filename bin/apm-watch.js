@@ -190,8 +190,12 @@ async function cmdOnce(args) {
       results: results.map((r) => ({
         target: r.target, kind: r.kind, status: r.status,
         latency_ms: r.latencyMs ?? null,
-        status_code: r.statusCode ?? null,     // http only
+        status_code: r.statusCode ?? null,       // http only
         days_remaining: r.daysRemaining ?? null, // tls only
+        p50_ms: r.p50Ms ?? null,                 // apm only
+        error_rate: r.errorRate ?? null,         // apm only
+        errors: r.errors ?? null,                // apm only
+        samples: r.samples ?? null,              // apm only
         detail: r.detail,
       })),
     }, null, 2));

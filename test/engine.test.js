@@ -96,8 +96,16 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   for (let i = 0; i < 10; i++) {
     engine.collector.add('slow', 200 + i, i === 0, now + i);
   }
-  const { summary } = await engine.runApmCheck();
+  const { summary, results } = await engine.runApmCheck();
   assert.equal(summary.slow.p95 >= 100, true);
+  // numeric fields flow through the result so a `once --json` CI consumer can
+  // compare error_rate/samples without parsing the detail string
+  const slowRes = results.find((r) => r.target === 'slow');
+  assert.equal(slowRes.p50Ms, summary.slow.p50);
+  assert.equal(slowRes.errorRate, 0.1, '1 error / 10 samples');
+  assert.equal(slowRes.errors, 1);
+  assert.equal(slowRes.samples, 10);
+  assert.equal(slowRes.latencyMs, summary.slow.p95);
   // route through the alert pipeline so slow/erroring services notify + log events
   await engine.runApmCheckWithAlerts();
   // slow service alerts + warns
