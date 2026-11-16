@@ -375,6 +375,56 @@ test('cli: run boots the full monitor loop and serves live state over web', asyn
   assert.match(page, /api\/states/);
 });
 
+test('cli: demo agent feeds the run monitor and its apm state surfaces over web', async (t) => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'run-apm.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true, errorRateThreshold: 0.05 },
+    store: { path: path.join(dir, 'run-apm.db') },
+    notifications: { desktop: false },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'web', '--ui-port', '0'], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`run did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // the `demo` command posts latency/error spans to the run monitor's collector
+  const demo = spawn(process.execPath, [BIN, 'demo', '--collect-addr', `http://127.0.0.1:${port}/apm/agent/trace`, '--interval', '150'], { cwd: path.dirname(BIN) });
+  let demoOut = '';
+  demo.stdout.on('data', (d) => (demoOut += d));
+  demo.stderr.on('data', (d) => (stderr += d));
+  t.after(() => demo.kill('SIGTERM'));
+
+  // apm:summary fires ~1.5s after run starts; poll until an apm state appears
+  let apm = null;
+  for (let i = 0; i < 50 && !apm; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+    const data = await res.json();
+    apm = data.states.find((s) => s.kind === 'apm') || null;
+    if (!apm) await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.ok(apm, `spans from the demo agent surfaced as apm state\nstderr:\n${stderr}`);
+  assert.equal(apm.target, 'demo');
+  assert.equal(typeof apm.samples, 'number', 'samples numeric survives the full loop');
+  assert.ok(apm.samples >= 1, 'collector received at least one span');
+  assert.ok(Number.isFinite(apm.p50_ms), 'p50_ms numeric on the web api');
+  assert.ok(Number.isFinite(apm.error_rate), 'error_rate numeric on the web api');
+  // the spawned demo command confirmed successful posts to the collector
+  assert.match(demoOut, /agent → \d+ms/, `demo agent logged a successful post:\n${demoOut}`);
+});
+
 test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
