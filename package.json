@@ -1,6 +1,6 @@
 {
   "name": "apm-watch",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Lightweight endpoint + TLS cert + APM desktop monitor (a Datadog slice).",
   "type": "module",
   "license": "MIT",

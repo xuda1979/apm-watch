@@ -13,7 +13,7 @@ import { Tui } from '../lib/ui-tui.js';
 import { startDemoAgent } from '../lib/demo-agent.js';
 import { exportStatus, renderStatusPage } from '../lib/export.js';
 
-const VERSION = '0.1.0';
+const VERSION = '1.0.0';
 export const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 function usage() {
