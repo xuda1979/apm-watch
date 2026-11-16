@@ -24,10 +24,11 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 - **告警**：桌面通知（`notify-send`）+ webhook（POST JSON）+ 邮件 SMTP（纯手写
   客户端，支持 AUTH PLAIN / STARTTLS），重复告警按 `repeatIntervalSeconds` 去重。
 - **UI**：
-  - `tui`：终端面板（绿/黄/红 + latency sparkline + APM p50/p95 与错误率 sparkline）
-  - `web`：单页（状态表格 + 三层曲线：latency / TLS 剩余天数 / APM p50/p95
-    + 错误率曲线，阈值虚线；每个被监控目标一条独立彩色折线 + 图例，多目标
-    不再合并成一条误导性的曲线）
+  - `tui`：终端面板（绿/黄/红 + latency/status-code sparkline + APM p50/p95
+    与错误率 sparkline）
+  - `web`：单页（状态表格 + 曲线：latency / HTTP 状态码历史 / TLS 剩余天数 /
+    APM p50/p95 + 错误率曲线，阈值虚线；每个被监控目标一条独立彩色折线 +
+    图例，多目标不再合并成一条误导性的曲线）
 - **存储**：SQLite（`node:sqlite`，WAL）。`states`（状态快照）、`metrics`
   （时间序列）、`events`（告警/审计）、`meta`（监控器自述：进程启动时刻、最近
   一次 check 时间、本轮最差状态）。引擎后台任务按 `store.retentionDays`

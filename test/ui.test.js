@@ -16,6 +16,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200 in 12.0ms' });
   store.saveMetric('http:api/latency', 10, Date.now() - 4000);
   store.saveMetric('http:api/latency', 15, Date.now());
+  store.saveMetric('http:api/status', 200, Date.now() - 4000);
+  store.saveMetric('http:api/status', 503, Date.now());
   // tls target with days-remaining series
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d (threshold 30d)' });
   store.saveMetric('tls:api/remaining', 12, Date.now());
@@ -41,6 +43,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cApmErr/);
   // status table shows a per-row kind field alongside target/status/latency/detail
   assert.match(html, /<th>target<\/th><th>status<\/th><th>kind<\/th><th>latency<\/th><th>detail<\/th>/);
+  // status-code history chart section rendered alongside the latency chart
+  assert.match(html, /cLat/);
+  assert.match(html, /cStatus/);
+  assert.match(html, /http status code history/);
   // refresh() targets the meta <p> by id, not the <meta charset> tag, so the
   // status line actually updates instead of forever showing "loading…"
   assert.match(html, /\$\('#meta'\)\.textContent = 'updated '/);
@@ -74,6 +80,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(typeof data.series['http:latency']['api'], 'object');
   assert.ok(Array.isArray(data.series['http:latency']['api']));
   assert.ok(data.series['http:latency']['api'].length >= 2);
+  assert.equal(data.series['http:status']['api'][0].value, 200);   // status-code history surfaced per target
+  assert.equal(data.series['http:status']['api'][1].value, 503);
   assert.ok(data.series['tls:remaining']['api'].length >= 1);
   assert.ok(data.series['apm:p50']['svc'].length >= 1);
   assert.ok(data.series['apm:p95']['svc'].length >= 1);
@@ -125,6 +133,8 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
   store.saveMetric('http:api/latency', 20, Date.now());
+  store.saveMetric('http:api/status', 200, Date.now() - 2000);
+  store.saveMetric('http:api/status', 200, Date.now());
   t.after(() => store.close());
 
   const tui = new Tui({ store, intervalMs: 1000 });
@@ -142,6 +152,9 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /cert:expires in 12d/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
+  // status-code history section renders per http target
+  assert.match(out, /── http status history ──/);
+  assert.match(out, /api: ▁|api: ▂|api: ▃|api: █/);
 });
 
 test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {
