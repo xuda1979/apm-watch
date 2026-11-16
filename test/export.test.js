@@ -51,6 +51,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.generated_at, new Date(out.generated_ts).toISOString());
   // the apm error-rate threshold the summary is judged against (web api parity)
   assert.equal(out.apm.errorRateThreshold, 0.05);
+  // unconfigured slow-latency threshold is null, not dropped (web api parity)
+  assert.equal(out.apm.latencyThresholdMs, null);
   setTimeout(store.close, 0);
 });
 
