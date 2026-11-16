@@ -205,24 +205,7 @@ async function cmdOnce(args) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
       apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000 },
-      results: results.map((r) => ({
-        target: r.target, kind: r.kind, status: r.status,
-        ts: r.ts ?? null,
-        latency_ms: r.latencyMs ?? null,
-        method: r.method ?? null,                // http only
-        status_code: r.statusCode ?? null,       // http only
-        latency_threshold_ms: r.latencyThresholdMs ?? null, // http only
-        days_remaining: r.daysRemaining ?? null, // tls only
-        warn_days_before: r.warnDaysBefore ?? null, // tls only
-        chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
-        valid_chain: r.validChain ?? null,       // tls only
-        leaf_subject: r.leafSubject ?? null,     // tls only
-        p50_ms: r.p50Ms ?? null,                 // apm only
-        error_rate: r.errorRate ?? null,         // apm only
-        errors: r.errors ?? null,                // apm only
-        samples: r.samples ?? null,              // apm only
-        detail: r.detail,
-      })),
+      results: results.map(onceJsonRow),
     }, null, 2));
     return;
   }
@@ -245,6 +228,33 @@ export function worstStatus(results, { warnExit = 1, errorExit = 2 } = {}) {
     if (r.status === 'warn') code = warnExit;
   }
   return code;
+}
+
+// Row mapper for `once --json` — every result kind (http/tls/apm) gets the full
+// field set with `?? null` normalization so a CI consumer can rely on a stable
+// shape. Kind-specific fields are null on the other kinds.
+export function onceJsonRow(r) {
+  return {
+    target: r.target, kind: r.kind, status: r.status,
+    ts: r.ts ?? null,
+    latency_ms: r.latencyMs ?? null,
+    method: r.method ?? null,                // http only
+    status_code: r.statusCode ?? null,       // http only
+    // http: resolved per-target threshold; apm: the config-level threshold the
+    // summary was judged against (latency_ms precedent — one field, both kinds)
+    latency_threshold_ms: r.latencyThresholdMs ?? null,
+    days_remaining: r.daysRemaining ?? null, // tls only
+    warn_days_before: r.warnDaysBefore ?? null, // tls only
+    chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
+    valid_chain: r.validChain ?? null,       // tls only
+    leaf_subject: r.leafSubject ?? null,     // tls only
+    p50_ms: r.p50Ms ?? null,                 // apm only
+    error_rate: r.errorRate ?? null,         // apm only
+    errors: r.errors ?? null,                // apm only
+    samples: r.samples ?? null,              // apm only
+    error_rate_threshold: r.errorRateThreshold ?? null, // apm only (stamped by runApmCheck, inc 33)
+    detail: r.detail,
+  };
 }
 
 function emoji(s) { return s === 'ok' ? 'OK' : s === 'warn' ? 'WS' : '!!'; }

@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { worstStatus } from '../bin/apm-watch.js';
+import { worstStatus, onceJsonRow } from '../bin/apm-watch.js';
 import { startHttpServer, startHttpsServer } from './helpers/fixtures.js';
 
 const BIN = fileURLToPath(new URL('../bin/apm-watch.js', import.meta.url));
@@ -23,6 +23,41 @@ test('cli: worstStatus picks exit code across ok/warn/error', () => {
   assert.equal(worstStatus([]), 0);
   // severity order holds regardless of result order
   assert.equal(worstStatus([warn, ok, err]), 2);
+});
+
+test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind', () => {
+  // a stamped apm result (runApmCheck, inc 33) carries both judged thresholds
+  const apm = onceJsonRow({
+    target: 'pay', kind: 'apm', status: 'warn', ts: 123,
+    latencyMs: 900, p50Ms: 700, errorRate: 0.13, errors: 13, samples: 100,
+    errorRateThreshold: 0.12, latencyThresholdMs: 800,
+    detail: 'p50=700ms p95=900ms errors=13/100 (slow p95)',
+  });
+  assert.equal(apm.kind, 'apm');
+  assert.equal(apm.error_rate_threshold, 0.12, 'configured apm error-rate threshold surfaces');
+  assert.equal(apm.latency_threshold_ms, 800, 'apm latency threshold rides the shared http/apm field');
+  assert.equal(apm.error_rate, 0.13);
+  assert.equal(apm.status_code, null, 'http-only field is null for apm');
+
+  // http rows stamp a per-target latency threshold but no error-rate threshold
+  const http = onceJsonRow({
+    target: 'api', kind: 'http', status: 'ok', ts: 1,
+    latencyMs: 4, method: 'GET', statusCode: 200, latencyThresholdMs: 250,
+    detail: 'HTTP 200 in 4ms',
+  });
+  assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
+  assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
+  assert.equal(http.p50_ms, null);
+
+  // tls rows carry neither apm threshold
+  const tls = onceJsonRow({
+    target: 'cert', kind: 'tls', status: 'ok', ts: 2,
+    daysRemaining: 200, warnDaysBefore: 30,
+    chain: [{ subject: 'CN=fixture.test' }], validChain: true, leafSubject: 'CN=fixture.test',
+    detail: 'expires in 200d',
+  });
+  assert.equal(tls.error_rate_threshold, null, 'apm-only field is null for tls');
+  assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
 });
 
 // Run `node bin/apm-watch.js once --config <file>` and resolve {code, stdout}.
@@ -157,6 +192,7 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(slow.method, 'GET');
   assert.equal(slow.latency_threshold_ms, 1, 'configured per-http latency threshold surfaces on once --json rows');
   assert.equal(ok.latency_threshold_ms, null, 'unconfigured http threshold is null, not dropped');
+  assert.equal(ok.error_rate_threshold, null, 'apm-only error-rate threshold is null on http rows');
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
