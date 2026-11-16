@@ -39,12 +39,13 @@ test('validate: tls entry with neither host nor pemFile is caught', () => {
 test('validate: invalid port / warnDaysBefore / timeoutMs', () => {
   const errs = validateConfig({
     http: [{ url: 'https://x', timeoutMs: -1 }],
-    tls: [{ host: 'x', port: 99999, warnDaysBefore: -5 }],
+    tls: [{ host: 'x', port: 99999, warnDaysBefore: -5, timeoutMs: -1 }],
   });
   const joined = errs.join('\n');
   assert.match(joined, /timeoutMs.*positive/);
   assert.match(joined, /port.*1\.\.65535/);
   assert.match(joined, /warnDaysBefore.*non-negative/);
+  assert.match(joined, /tls\[0\].*timeoutMs.*positive/, 'per-tls cert-fetch timeout typos are caught too');
 });
 
 test('validate: unit-string intervals agree with the scheduler parser', () => {

@@ -50,15 +50,16 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
   assert.equal(http.p50_ms, null);
 
-  // tls rows carry neither apm threshold nor http timeout
+  // tls rows carry neither apm threshold nor http verb, but stamp the
+  // cert-fetch socket timeout like http rows stamp the probe abort timeout
   const tls = onceJsonRow({
     target: 'cert', kind: 'tls', status: 'ok', ts: 2,
-    daysRemaining: 200, warnDaysBefore: 30,
+    timeoutMs: 4000, daysRemaining: 200, warnDaysBefore: 30,
     chain: [{ subject: 'CN=fixture.test' }], validChain: true, leafSubject: 'CN=fixture.test',
     detail: 'expires in 200d',
   });
   assert.equal(tls.error_rate_threshold, null, 'apm-only field is null for tls');
-  assert.equal(tls.timeout_ms, null, 'http-only field is null for tls');
+  assert.equal(tls.timeout_ms, 4000, 'cert-fetch socket timeout surfaces on tls rows');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
 });
 
@@ -230,7 +231,7 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cfg = path.join(dir, 'tls.json');
   writeFileSync(cfg, JSON.stringify({
-    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: srv.port, rejectUnauthorized: false, warnDaysBefore: 30 }],
+    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: srv.port, rejectUnauthorized: false, warnDaysBefore: 30, timeoutMs: 1500 }],
     store: { path: path.join(dir, 'tls.db') },
   }));
   const { code, stdout, stderr } = await runOnceJson(cfg);
@@ -249,6 +250,8 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.leaf_subject, tls.chain[0].subject);
   // the resolved warn-days threshold the check was judged against (web/export parity)
   assert.equal(tls.warn_days_before, 30);
+  // the cert-fetch socket timeout that would have aborted the fetch (web/export parity)
+  assert.equal(tls.timeout_ms, 1500);
 });
 
 test('cli: once human output surfaces tls chain metadata (leaf subject)', async (t) => {
@@ -275,7 +278,7 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cfg = path.join(dir, 'tls-fail.json');
   writeFileSync(cfg, JSON.stringify({
-    tls: [{ name: 'broken-cert', pemFile: path.join(dir, 'missing.pem'), warnDaysBefore: 30 }],
+    tls: [{ name: 'broken-cert', pemFile: path.join(dir, 'missing.pem'), warnDaysBefore: 30, timeoutMs: 1500 }],
     store: { path: path.join(dir, 'tls-fail.db') },
   }));
   const { code, stdout, stderr } = await runOnceJson(cfg);
@@ -291,6 +294,8 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   assert.equal(typeof tls.ts, 'number');
   // the resolved warn-days threshold still surfaces even on a failed check
   assert.equal(tls.warn_days_before, 30);
+  // the cert-fetch socket timeout stamps the failed row too, like warnDaysBefore
+  assert.equal(tls.timeout_ms, 1500);
 });
 
 test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {

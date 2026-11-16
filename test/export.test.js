@@ -61,6 +61,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.deepEqual(out.http.timeoutMs, {}, 'empty-config http timeout map defaults to {}');
   // per-target cert warn-days threshold map (web api parity): none configured -> {}
   assert.deepEqual(out.tls.warnDaysBefore, {}, 'empty-config tls warn-days map defaults to {}');
+  // per-target cert-fetch timeout map (web api parity): none configured -> {}
+  assert.deepEqual(out.tls.timeoutMs, {}, 'empty-config tls timeout map defaults to {}');
   setTimeout(store.close, 0);
 });
 

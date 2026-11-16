@@ -27,7 +27,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('apm:svc/p95', 40, Date.now());
   store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
-  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000 }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30 }] });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000 }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30, timeoutMs: 4000 }] });
   const port = await listen(server);
   t.after(() => new Promise((r) => server.close(r)));
 

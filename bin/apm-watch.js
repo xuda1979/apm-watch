@@ -243,8 +243,9 @@ export function onceJsonRow(r) {
     // http: resolved per-target threshold; apm: the config-level threshold the
     // summary was judged against (latency_ms precedent — one field, both kinds)
     latency_threshold_ms: r.latencyThresholdMs ?? null,
-    // http: the timeout the probe was actually aborted by (default 5000), on
-    // the check-http result since inc 36 (latency_threshold_ms precedent)
+    // http: the timeout the probe was actually aborted by; tls: the cert-fetch
+    // socket timeout the check was aborted by (both default 5000, stamped on
+    // the engine results; latency_threshold_ms precedent)
     timeout_ms: r.timeoutMs ?? null,
     days_remaining: r.daysRemaining ?? null, // tls only
     warn_days_before: r.warnDaysBefore ?? null, // tls only

@@ -77,6 +77,12 @@ test('engine: runs http + tls checks and persists + alerts on cert expiry', asyn
   assert.ok(warnAlerts.length >= 1);
   assert.ok(errAlerts.length >= 1);
 
+  // the cert-fetch socket timeout stamps the tls result (default 5000 when
+  // unset in config) — same stamping family as warnDaysBefore
+  const soonRes = await engine.runTlsCheck({ name: 'soon', host: '127.0.0.1', port: httpsSoon.port, rejectUnauthorized: false, servername: 'fixture.test' });
+  assert.equal(soonRes.status, 'warn');
+  assert.equal(soonRes.timeoutMs, 5000, 'unconfigured tls timeout resolves to the 5000 default');
+
   // events recorded
   const events = store.recentEvents();
   assert.ok(events.length >= 2);
@@ -224,11 +230,13 @@ test('engine: tls pemFile checks a local cert bundle without a socket', async (t
   assert.ok(!alerts.some((a) => a.target === 'bundle-ok' && a.status !== 'ok'));
 
   // missing file -> error state, not a crash
-  const res = await engine.runTlsCheck({ name: 'missing', pemFile: path.join(dir, 'nope.pem') });
+  const res = await engine.runTlsCheck({ name: 'missing', pemFile: path.join(dir, 'nope.pem'), timeoutMs: 750 });
   assert.equal(res.status, 'error');
   assert.match(res.detail, /ENOENT|no such file/i);
   // the resolved warn threshold stamps the tls result even on error
   assert.equal(res.warnDaysBefore, 30, 'default warnDaysBefore=30 resolves onto the failed check result');
+  // the cert-fetch socket timeout stamps the tls result even on error
+  assert.equal(res.timeoutMs, 750, 'configured cert-fetch timeout stamps the failed check result');
 });
 
 test('engine: per-check intervalSeconds overrides the scheduler-wide default', () => {
