@@ -41,7 +41,7 @@ Flags:
 }
 
 function parseArgs(argv) {
-  const args = { _: [] };
+  const args = { _: [], unknown: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--config') args.config = argv[++i];
@@ -55,7 +55,7 @@ function parseArgs(argv) {
     else if (a === '--json') args.json = true;
     else if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--version' || a === '-V') args.version = true;
-    else if (a.startsWith('--')) { /* ignore unknown */ }
+    else if (a.startsWith('--')) args.unknown.push(a);
     else args._.push(a);
   }
   return args;
@@ -63,6 +63,11 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  // A typo'd flag must not silently fall back to the default config and run
+  // checks against it — surface it so cron/CI authors catch mistakes.
+  for (const u of args.unknown) {
+    console.error(`[apm-watch] unknown flag "${u}" ignored (see --help)`);
+  }
   if (args.help) { usage(); return; }
   if (args.version) { console.log(VERSION); return; }
   const cmd = args._[0] || 'run';

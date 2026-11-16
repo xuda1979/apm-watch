@@ -205,3 +205,26 @@ test('cli: once --json reports error status_code and exit_code 2', async (t) => 
   assert.equal(down.status_code, 404, 'numeric status_code survives in error results');
   assert.match(down.detail, /expected status 200, got 404/);
 });
+
+test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // A typo'd --confg must not silently fall back to ./apm-watch.json; point the
+  // real config at a pass and expect a clear stderr warning plus normal run.
+  const cfg = path.join(dir, 'ok.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'ok.db') },
+  }));
+  const child = spawn(process.execPath, [BIN, 'once', '--confg', cfg], { cwd: path.dirname(BIN) });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => (stdout += d));
+  child.stderr.on('data', (d) => (stderr += d));
+  const code = await new Promise((res) => child.on('close', res));
+  assert.equal(code, 0, `stdout:\n${stdout}`);
+  assert.match(stderr, /unknown flag "--confg"/, 'typoed flag is flagged on stderr');
+});
