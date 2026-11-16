@@ -89,6 +89,29 @@ test('validate: apm threshold typos that would corrupt the warn logic are caught
   assert.deepEqual(ok, []);
 });
 
+test('validate: store.retentionDays typos that would corrupt the prune task are caught', () => {
+  // retentionDays uses the engine's toDays grammar (w|d|h, default 'd') — NOT
+  // the scheduler's s|m|h|d. A "2m" would be NaN in toDays and silently fall
+  // back to the 7d default; a "1w" is valid and must be accepted.
+  const bad = validateConfig({ http: [], tls: [], store: { retentionDays: '2m' } });
+  assert.match(bad.join('\n'), /store\.retentionDays.*positive number of days/);
+  for (const v of [0, -1, -7, '1x', 'one']) {
+    assert.match(
+      validateConfig({ http: [], tls: [], store: { retentionDays: v } }).join('\n'),
+      /store\.retentionDays.*positive number of days/,
+      `retentionDays=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  // boundaries that resolve to a positive number of days stay accepted
+  for (const v of [7, 0.5, '7', '48h', '1w', '2.5d']) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], store: { retentionDays: v } }),
+      [],
+      `retentionDays=${JSON.stringify(v)} must be accepted`,
+    );
+  }
+});
+
 test('validate: non-object section is caught', () => {
   const errs = validateConfig({ http: [], tls: [], scheduler: 'daily' });
   assert.match(errs.join('\n'), /config\.scheduler must be an object/);

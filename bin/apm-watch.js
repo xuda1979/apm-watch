@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { loadConfig, httpLatencyThresholds, tlsWarnDaysBefore } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
-import { Engine } from '../lib/engine.js';
+import { Engine, retentionDays } from '../lib/engine.js';
 import { createUiServer } from '../lib/ui-server.js';
 import { Tui } from '../lib/ui-tui.js';
 import { startDemoAgent } from '../lib/demo-agent.js';
@@ -205,6 +205,7 @@ async function cmdOnce(args) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
       apm: { errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
+      store: { retentionDays: retentionDays(config?.store) },
       results: results.map(onceJsonRow),
     }, null, 2));
     return;
