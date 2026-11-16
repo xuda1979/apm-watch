@@ -267,6 +267,47 @@ test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
 });
 
+test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRate parity)', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 270, detail: 'p50=200ms p95=270ms errors=0/10 (slow p95)' });
+  store.saveState({ target: 'bare', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
+  for (const target of ['svc', 'bare']) {
+    store.saveMetric(`apm:${target}/p50`, 20, Date.now() - 1000);
+    store.saveMetric(`apm:${target}/p95`, target === 'svc' ? 270 : 40, Date.now() - 1000);
+    store.saveMetric(`apm:${target}/errorRate`, 0.03, Date.now());
+  }
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000, apmLatencyThresholdMs: 250, apmErrorRateThreshold: 0.05 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  // the configured slow-latency threshold annotates every apm row (a single
+  // config-level threshold governs all services, unlike per-target http/tls)
+  assert.match(out, /svc: .*slow thr 250ms/);
+  assert.match(out, /bare: .*slow thr 250ms/);
+  // the resolved error-rate threshold annotates the err lines
+  assert.match(out, /err 3\.0% .*errThr 5\.0%/);
+});
+
+test('ui: tui apm rows stay bare when no apm thresholds are configured', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
+  store.saveMetric('apm:svc/p50', 20, Date.now() - 1000);
+  store.saveMetric('apm:svc/p95', 40, Date.now() - 1000);
+  store.saveMetric('apm:svc/errorRate', 0.03, Date.now());
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /── apm history ──/);
+  assert.doesNotMatch(out, / thr | errThr /, 'no apm threshold annotation when none configured');
+});
+
 test('ui: tui header shows monitor self-health from the health meta', async (t) => {
   const store = new Store(':memory:');
   store.setClock(() => Date.now());

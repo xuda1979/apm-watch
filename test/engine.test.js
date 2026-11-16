@@ -124,6 +124,10 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.equal(slowRes.errors, 1);
   assert.equal(slowRes.samples, 10);
   assert.equal(slowRes.latencyMs, summary.slow.p95);
+  // the thresholds judged against stamp the result (once --json / surfaces
+  // see the warn criteria without re-resolving the config)
+  assert.equal(slowRes.errorRateThreshold, 0.5);
+  assert.equal(slowRes.latencyThresholdMs, 100);
   // route through the alert pipeline so slow/erroring services notify + log events
   await engine.runApmCheckWithAlerts();
   // slow service alerts + warns
@@ -144,7 +148,11 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   for (let i = 0; i < 10; i++) {
     engine.collector.add('fast', 5, false, now + i);
   }
-  await engine.runApmCheck();
+  const { results: fastResults } = await engine.runApmCheck();
+  const fastRes = fastResults.find((r) => r.target === 'fast');
+  assert.equal(fastRes.status, 'ok');
+  assert.equal(fastRes.errorRateThreshold, 0.5, 'thresholds stamp ok results too');
+  assert.equal(fastRes.latencyThresholdMs, 100);
   const states = store.latestStates();
   assert.equal(states.find((s) => s.target === 'slow').status, 'warn');
   assert.equal(states.find((s) => s.target === 'fast').status, 'ok');

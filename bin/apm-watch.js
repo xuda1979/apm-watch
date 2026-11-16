@@ -138,6 +138,11 @@ async function cmdRun(args) {
       historyMs: (config.ui?.historySeconds ?? 24 * 3600) * 1000, // match web charts window
       latencyThresholds: httpLatencyThresholds(config),
       tlsWarnDaysBefore: tlsWarnDaysBefore(config),
+      // apm warn criteria the collector summary is judged against (web drawApm
+      // /drawErrRate marker parity): null error-rate here would leave the err
+      // line unannotated even though the engine always judges against 0.05.
+      apmLatencyThresholdMs: config.apm?.latencyThresholdMs ?? null,
+      apmErrorRateThreshold: config.apm?.errorRateThreshold ?? 0.05,
       onExit: shutdown,
     });
     tui.start();
