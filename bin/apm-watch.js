@@ -88,6 +88,7 @@ async function cmdRun(args) {
   const engine = new Engine({ store, config });
   const ui = args.ui || config.ui?.mode || 'web';
   const uiPort = args.uiPort !== undefined ? args.uiPort : config.ui?.port ?? 0;
+  const shutdown = () => engine.stop();
 
   // start UI before engine so first status is visible quickly
   if (ui === 'web') {
@@ -115,14 +116,13 @@ async function cmdRun(args) {
         console.error('[apm-watch] could not start APM collector:', e.message);
       }
     }
-    const tui = new Tui({ store, intervalMs: 2000 });
+    const tui = new Tui({ store, intervalMs: 2000, onExit: shutdown });
     tui.start();
   }
 
   engine.start();
   // keep process alive
   process.stdin.resume?.();
-  const shutdown = () => engine.stop();
   process.on('SIGINT', () => { shutdown(); process.exit(0); });
   process.on('SIGTERM', () => { shutdown(); process.exit(0); });
 }
