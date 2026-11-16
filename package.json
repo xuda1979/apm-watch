@@ -1,0 +1,22 @@
+{
+  "name": "apm-watch",
+  "version": "0.1.0",
+  "description": "Lightweight endpoint + TLS cert + APM desktop monitor (a Datadog slice).",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "apm-watch": "bin/apm-watch.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "scripts": {
+    "start": "node bin/apm-watch.js",
+    "demo": "node bin/apm-watch.js demo",
+    "tui": "node bin/apm-watch.js run --ui tui --ui-port 0",
+    "test": "node --test test/*.test.js",
+    "test:memory": "node test/memory.test.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
