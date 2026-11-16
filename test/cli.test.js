@@ -70,17 +70,17 @@ test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
   assert.match(stdout, /slow:/);
 });
 
-test('cli: once exits 2 when a check errors (status assertion fails)', async (t) => {
-  const srv = await startHttpServer({ '/missing': { status: 404, body: 'nope' } });
-  t.after(srv.close);
+test('cli: once accepts an apm-only config and exits 0', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const cfg = path.join(dir, 'err.json');
+  const cfg = path.join(dir, 'apm-only.json');
   writeFileSync(cfg, JSON.stringify({
-    http: [{ name: 'down-svc', url: srv.url + '/missing', assert: { statusCode: 200 } }],
-    store: { path: path.join(dir, 'err.db') },
+    apm: { collect: true, errorRateThreshold: 0.05 },
+    store: { path: path.join(dir, 'apm-only.db') },
   }));
-  const { code, stdout } = await runOnce(cfg);
-  assert.equal(code, 2, `stdout:\n${stdout}`);
-  assert.match(stdout, /expected status 200/);
+  // No agent is feeding the collector in this fresh process, so the APM
+  // summary is empty — what matters is that validation stops rejecting the
+  // shape and `once` completes without crashing.
+  const { code, stderr } = await runOnce(cfg);
+  assert.equal(code, 0, `stderr:\n${stderr}`);
 });

@@ -54,10 +54,16 @@ test('validate: unit-string intervals agree with the scheduler parser', () => {
   assert.match(bad.join('\n'), /intervalSeconds/);
 });
 
-test('validate: no checks at all', () => {
-  const errs = validateConfig({ apm: { collect: true } });
-  assert.deepEqual(errs, ['config has no checks: add an `http` or `tls` array']);
-  assert.throws(() => assertValidConfig({ apm: { collect: true } }), /invalid config/);
+test('validate: no checks at all (no apm.collect) is still rejected', () => {
+  const errs = validateConfig({});
+  assert.deepEqual(errs, ['config has no checks: add an `http` or `tls` array (or enable `apm.collect`)']);
+  assert.throws(() => assertValidConfig({ apm: {} }), /invalid config/);
+});
+
+test('validate: apm-only config with collect enabled is accepted', () => {
+  const cfg = { apm: { collect: true, errorRateThreshold: 0.05, latencyThresholdMs: 500 } };
+  assert.deepEqual(validateConfig(cfg), []);
+  assert.doesNotThrow(() => assertValidConfig(cfg));
 });
 
 test('validate: non-object section is caught', () => {

@@ -165,6 +165,16 @@ async function cmdOnce(args) {
     results.push(r);
     console.log(`${emoji(r.status)} tls ${r.target}: ${r.detail}`);
   }
+  if (config.apm?.collect) {
+    // `once` means "check each configured dimension once": APM services are
+    // summarized from whatever the collector has in its window (empty when no
+    // agent upstream is feeding it). No alerts here, matching http/tls.
+    const { results: apmResults } = await engine.runApmCheck();
+    for (const r of apmResults) {
+      results.push(r);
+      console.log(`${emoji(r.status)} apm ${r.target}: ${r.detail}`);
+    }
+  }
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
   // 0 = all ok, 1 = any warn, 2 = any error. Matching Nagios conventions.
   process.exitCode = worstStatus(results);
