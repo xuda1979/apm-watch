@@ -58,7 +58,7 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   const past = Date.now() - 60000;
   store.setClock(() => past);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d', validChain: false });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, detail: 'down' });
   store.saveState({ target: 'evil', kind: 'http', status: 'ok', latencyMs: 1, detail: '<script>alert(1)</script>& "x"' });
   const out = exportStatus(store, {}, '9.9.9');
@@ -76,6 +76,8 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   assert.match(html, />other<\/td>/);
   assert.match(html, /HTTP 200/);
   assert.match(html, /expires in 12d/);
+  // broken-chain marker on the tls row (valid_chain=false row)
+  assert.match(html, /expires in 12d \(chain broken\)/);
   // uptime pct rendered in the http row detail
   assert.match(html, /HTTP 200 · 100% uptime/);
   // detail is html-escaped: < and & cannot break out of the page

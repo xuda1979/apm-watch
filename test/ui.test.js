@@ -143,7 +143,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
   store.setClock(() => Date.now() - 60000);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', detail: 'HTTP 200' });
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [], validChain: false, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
   store.saveMetric('http:api/latency', 20, Date.now());
   store.saveMetric('http:api/status', 200, Date.now() - 2000);
@@ -167,6 +167,8 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /cert:expires in 12d/);
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
+  // chain-validity parity with the web table: broken chains are flagged in the row
+  assert.match(out, /\(chain broken\)/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
   // status-code history section renders per http target
