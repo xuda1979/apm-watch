@@ -61,7 +61,7 @@ apm-watch serve [--config FILE] [--port PORT]
     // 自签/内网证书请配合：
     // "rejectUnauthorized": false, "servername": "my-host"
   ],
-  "apm": { "collect": true, "errorRateThreshold": 0.05 },
+  "apm": { "collect": true, "errorRateThreshold": 0.05, "latencyThresholdMs": 500 },
   "scheduler": { "httpIntervalSeconds": 30, "tlsIntervalSeconds": 300, "apmIntervalSeconds": 60 },
   "notifications": {
     "desktop": true,
@@ -83,7 +83,7 @@ apm-watch serve [--config FILE] [--port PORT]
 ## 测试
 
 ```bash
-npm test             # 全部 35 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 36 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```

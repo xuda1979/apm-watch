@@ -81,3 +81,28 @@ test('engine: dead/unresponsive endpoint -> error, JSON body assert works', asyn
   const res = await engine.runHttpCheck({ name: 'hang', url: hangSrv.url + '/x', timeoutMs: 300 });
   assert.equal(res.status, 'error');
 });
+
+test('engine: apm slow p95 latency flips status to warn below error threshold', async () => {
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: { apm: { collect: true, errorRateThreshold: 0.5, latencyThresholdMs: 100 } },
+    log: () => {},
+  });
+  // 10 spans, 1 error (10% < 50% threshold) but p95 well above 100ms
+  const now = Date.now();
+  for (let i = 0; i < 10; i++) {
+    engine.collector.add('slow', 200 + i, i === 0, now + i);
+  }
+  const slow = await engine.runApmCheck();
+  assert.equal(slow.slow.p95 >= 100, true);
+
+  // fast service: p95 under latency threshold, low errors -> ok
+  for (let i = 0; i < 10; i++) {
+    engine.collector.add('fast', 5, false, now + i);
+  }
+  await engine.runApmCheck();
+  const states = store.latestStates();
+  assert.equal(states.find((s) => s.target === 'slow').status, 'warn');
+  assert.equal(states.find((s) => s.target === 'fast').status, 'ok');
+});
