@@ -132,7 +132,12 @@ async function cmdRun(args) {
         console.error('[apm-watch] could not start APM collector:', e.message);
       }
     }
-    const tui = new Tui({ store, intervalMs: 2000, onExit: shutdown });
+    const tui = new Tui({
+      store,
+      intervalMs: 2000,
+      historyMs: (config.ui?.historySeconds ?? 24 * 3600) * 1000, // match web charts window
+      onExit: shutdown,
+    });
     tui.start();
   }
 

@@ -286,3 +286,28 @@ test('ui: api health is null when the engine has not persisted any yet', async (
   const data = await res.json();
   assert.equal(data.health, null);
 });
+
+test('ui: tui honors the configured history window for its sparklines', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 20, detail: 'HTTP 200' });
+  // one latency point far outside a short window, one current
+  store.saveMetric('http:api/latency', 10, Date.now() - 60000);
+  store.saveMetric('http:api/latency', 20, Date.now());
+  t.after(() => store.close());
+
+  const render = (tui) => {
+    let out = '';
+    const orig = process.stdout.write;
+    process.stdout.write = (s) => { out += s; return true; };
+    try { tui.render(); } finally { process.stdout.write = orig; }
+    return out;
+  };
+
+  // 5s window: the minute-old point is dropped -> single-glyph sparkline
+  const outShort = render(new Tui({ store, intervalMs: 1000, historyMs: 5000 }));
+  assert.match(outShort, /api: ▁$/m);
+
+  // default 1h window keeps both points -> two glyphs
+  const outLong = render(new Tui({ store, intervalMs: 1000 }));
+  assert.match(outLong, /api: ▁█/);
+});
