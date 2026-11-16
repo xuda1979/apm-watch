@@ -63,6 +63,9 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.deepEqual(out.tls.warnDaysBefore, {}, 'empty-config tls warn-days map defaults to {}');
   // per-target cert-fetch timeout map (web api parity): none configured -> {}
   assert.deepEqual(out.tls.timeoutMs, {}, 'empty-config tls timeout map defaults to {}');
+  // per-check run-interval maps (web api parity): none configured -> {}
+  assert.deepEqual(out.http.intervalSeconds, {}, 'empty-config http run-interval map defaults to {}');
+  assert.deepEqual(out.tls.intervalSeconds, {}, 'empty-config tls run-interval map defaults to {}');
   // store retention (the value the store:prune scheduler task uses): default 7
   assert.equal(out.store.retentionDays, 7, 'unconfigured store retention surfaces as the 7d default');
   // alert repeat-interval (the engine's re-send dedup window): default 3600
