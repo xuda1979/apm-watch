@@ -206,6 +206,8 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.ok(tls.chain.length >= 1, 'valid leaf cert -> chain entries present');
   assert.equal(typeof tls.valid_chain, 'boolean');
   assert.equal(tls.leaf_subject, tls.chain[0].subject);
+  // the resolved warn-days threshold the check was judged against (web/export parity)
+  assert.equal(tls.warn_days_before, 30);
 });
 
 test('cli: once human output surfaces tls chain metadata (leaf subject)', async (t) => {
@@ -246,6 +248,8 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   assert.equal(tls.valid_chain, false);
   assert.equal(tls.leaf_subject, null);
   assert.equal(typeof tls.ts, 'number');
+  // the resolved warn-days threshold still surfaces even on a failed check
+  assert.equal(tls.warn_days_before, 30);
 });
 
 test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {

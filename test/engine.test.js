@@ -219,6 +219,8 @@ test('engine: tls pemFile checks a local cert bundle without a socket', async (t
   const res = await engine.runTlsCheck({ name: 'missing', pemFile: path.join(dir, 'nope.pem') });
   assert.equal(res.status, 'error');
   assert.match(res.detail, /ENOENT|no such file/i);
+  // the resolved warn threshold stamps the tls result even on error
+  assert.equal(res.warnDaysBefore, 30, 'default warnDaysBefore=30 resolves onto the failed check result');
 });
 
 test('engine: per-check intervalSeconds overrides the scheduler-wide default', () => {

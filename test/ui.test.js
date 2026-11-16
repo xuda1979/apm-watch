@@ -27,7 +27,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('apm:svc/p95', 40, Date.now());
   store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
-  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000 }, http: [{ name: 'api', latencyThresholdMs: 200 }] });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000 }, http: [{ name: 'api', latencyThresholdMs: 200 }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30 }] });
   const port = await listen(server);
   t.after(() => new Promise((r) => server.close(r)));
 
@@ -108,6 +108,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.apm.latencyThresholdMs, 500);  // configured slow-latency threshold
   assert.equal(data.apm.windowMs, 90_000);         // configured collector window
   assert.deepEqual(data.http.latencyThresholds, { api: 200 }, 'per-target latency thresholds reach the web api');
+  assert.deepEqual(data.tls.warnDaysBefore, { api: 30 }, 'per-target cert warn thresholds reach the web api');
+  // the cTls chart is drawn with the per-target threshold map so the browser can
+  // dash-mark each cert's configured warn day (web latency-chart parity)
+  assert.match(html, /drawLines\(\$\('#cTls'\), data\.series\['tls:remaining'\], 'days', data\.tls\.warnDaysBefore\)/);
   for (const pt of data.series['http:latency']['api']) {
     assert.equal(typeof pt.ts, 'number');
     assert.equal(typeof pt.value, 'number');
@@ -217,7 +221,26 @@ test('ui: tui has no threshold marker when config supplies none', async (t) => {
   process.stdout.write = (s) => { out += s; return true; };
   try { tui.render(); } finally { process.stdout.write = orig; }
   assert.match(out, /── latency history ──/);
-  assert.doesNotMatch(out, / thr /, 'no threshold annotation when the target has none configured');
+  assert.doesNotMatch(out, / thr /, 'no latency threshold annotation when the target has none configured');
+});
+
+test('ui: tui tls-history rows annotate the per-target cert warn threshold (web cTls parity)', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [], validChain: false, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
+  store.saveState({ target: 'anon', kind: 'tls', status: 'warn', chain: [], validChain: false, detail: 'expires in 12d' });
+  for (const target of ['api', 'anon']) {
+    store.saveMetric(`tls:${target}/remaining`, 12, Date.now());
+  }
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000, tlsWarnDaysBefore: { api: 30 } });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  // the configured cert warn-days threshold is annotated on its target's row, others stay bare
+  assert.match(out, /api: .*warn 30d/);
+  assert.doesNotMatch(out, /anon: .*warn \d+d/);
 });
 
 test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {

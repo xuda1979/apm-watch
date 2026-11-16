@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, httpLatencyThresholds } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds, tlsWarnDaysBefore } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine } from '../lib/engine.js';
@@ -137,6 +137,7 @@ async function cmdRun(args) {
       intervalMs: 2000,
       historyMs: (config.ui?.historySeconds ?? 24 * 3600) * 1000, // match web charts window
       latencyThresholds: httpLatencyThresholds(config),
+      tlsWarnDaysBefore: tlsWarnDaysBefore(config),
       onExit: shutdown,
     });
     tui.start();
@@ -207,6 +208,7 @@ async function cmdOnce(args) {
         status_code: r.statusCode ?? null,       // http only
         latency_threshold_ms: r.latencyThresholdMs ?? null, // http only
         days_remaining: r.daysRemaining ?? null, // tls only
+        warn_days_before: r.warnDaysBefore ?? null, // tls only
         chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
         valid_chain: r.validChain ?? null,       // tls only
         leaf_subject: r.leafSubject ?? null,     // tls only
