@@ -117,3 +117,26 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.equal(states.find((s) => s.target === 'fast').status, 'ok');
   assert.ok(!alerts.some((a) => a.target === 'fast'), 'fast service must not alert');
 });
+
+test('engine: per-check intervalSeconds overrides the scheduler-wide default', () => {
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      scheduler: { httpIntervalSeconds: 120, tlsIntervalSeconds: 300 },
+      http: [
+        { name: 'fast', url: 'http://x/', intervalSeconds: 31 },   // uses per-check
+        { name: 'plain', url: 'http://y/' },                        // falls back to scheduler
+        { name: 'closed', url: 'http://z/', intervalSeconds: 5 },   // clamped up to 30
+      ],
+      tls: [{ name: 'cert', host: 'h', port: 443, intervalSeconds: '2m' }],
+    },
+    log: () => {},
+  });
+  const tasks = engine.buildTasks();
+  const find = (id) => tasks.find((t) => t.id === id).intervalMs;
+  assert.equal(find('http:fast'), 31_000);     // explicit per-check
+  assert.equal(find('http:plain'), 120_000);   // scheduler-wide http default
+  assert.equal(find('http:closed'), 30_000);   // clamped to MIN_INTERVAL_S
+  assert.equal(find('tls:cert'), 120_000); // unit string "2m"
+});
