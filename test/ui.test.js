@@ -19,7 +19,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('http:api/status', 200, Date.now() - 4000);
   store.saveMetric('http:api/status', 503, Date.now());
   // tls target with days-remaining series
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d (threshold 30d)' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d (threshold 30d)' });
   store.saveMetric('tls:api/remaining', 12, Date.now());
   // apm target with p50/p95 series
   store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
@@ -56,6 +56,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /s\.leaf_subject/);
   assert.match(html, /chain broken/);
   assert.match(html, /self-signed/);
+  // the tls hover tooltip also surfaces each cert's valid-from time
+  assert.match(html, /c\.validFrom/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
@@ -75,7 +77,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiTls.leaf_subject, '/CN=fixture.test');
   assert.equal(apiTls.valid_chain, true);
   assert.deepEqual(apiTls.chain, [
-    { subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true },
+    { subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true },
   ]);
   const svcApm = data.states.find((s) => s.target === 'svc' && s.kind === 'apm');
   // numeric per-kind fields are exposed to the browser UI
