@@ -68,9 +68,16 @@ test('http checker: latencyThresholdMs demotes slow-but-ok to warn', async (t) =
   t.after(srv.close);
   const fast = await checkEndpoint({ url: srv.url + '/slow', latencyThresholdMs: 400 });
   assert.equal(fast.status, 'ok', 'fast response under threshold stays ok');
+  assert.equal(fast.latencyThresholdMs, 400, 'configured threshold surfaces on the result');
   const slow = await checkEndpoint({ url: srv.url + '/slow', latencyThresholdMs: 1 });
   assert.equal(slow.status, 'warn', 'slow response over threshold demotes to warn');
   assert.match(slow.detail, /slow:/);
+  assert.equal(slow.latencyThresholdMs, 1, 'configured threshold surfaces on the result');
+  // unresolved threshold (or one defined under assert) mirrors the engine resolution
+  const viaAssert = await checkEndpoint({ url: srv.url + '/slow', assert: { latencyThresholdMs: 0 } });
+  assert.equal(viaAssert.latencyThresholdMs, 0, 'assert.latencyThresholdMs resolves like the engine');
+  const unset = await checkEndpoint({ url: srv.url + '/slow' });
+  assert.equal(unset.latencyThresholdMs, null, 'no threshold configured -> null, not undefined');
 });
 
 test('http checker: latency warn does not mask hard errors', async (t) => {

@@ -204,6 +204,7 @@ async function cmdOnce(args) {
         latency_ms: r.latencyMs ?? null,
         method: r.method ?? null,                // http only
         status_code: r.statusCode ?? null,       // http only
+        latency_threshold_ms: r.latencyThresholdMs ?? null, // http only
         days_remaining: r.daysRemaining ?? null, // tls only
         chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
         valid_chain: r.validChain ?? null,       // tls only

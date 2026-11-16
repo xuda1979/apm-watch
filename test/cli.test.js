@@ -155,6 +155,8 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(typeof ok.ts, 'number', 'http results carry a per-result timestamp');
   assert.equal(ok.method, 'GET', 'http-only method field surfaces the configured verb');
   assert.equal(slow.method, 'GET');
+  assert.equal(slow.latency_threshold_ms, 1, 'configured per-http latency threshold surfaces on once --json rows');
+  assert.equal(ok.latency_threshold_ms, null, 'unconfigured http threshold is null, not dropped');
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
