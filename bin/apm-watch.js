@@ -218,7 +218,11 @@ async function cmdOnce(args) {
   }
   for (const r of results) {
     const verb = r.method ? r.method + ' ' : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${r.detail}`);
+    // tls chain metadata, mirroring the tui row / web table & tooltip
+    const tls = r.kind === 'tls'
+      ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}`
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${r.detail}${tls}`);
   }
 }
 

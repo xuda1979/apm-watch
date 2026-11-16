@@ -199,6 +199,25 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.leaf_subject, tls.chain[0].subject);
 });
 
+test('cli: once human output surfaces tls chain metadata (leaf subject)', async (t) => {
+  const srv = await startHttpsServer({ days: 15 });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'tls-hum.json');
+  writeFileSync(cfg, JSON.stringify({
+    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: srv.port, rejectUnauthorized: false, warnDaysBefore: 30 }],
+    store: { path: path.join(dir, 'tls-hum.db') },
+  }));
+  const { code, stdout, stderr } = await runOnce(cfg);
+  assert.equal(code, 1, `warn threshold -> exit 1\nstderr:\n${stderr}`);
+  // the warn detail plus the leaf-subject suffix, matching the tui row format
+  assert.match(stdout, /tls cert-soon: expires in 15d/);
+  assert.match(stdout, /\(CN=fixture\.test\)/, `leaf subject surfaces in the human report\nstdout:\n${stdout}`);
+  // a valid chain must not be flagged as broken
+  assert.doesNotMatch(stdout, /chain broken/);
+});
+
 test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
