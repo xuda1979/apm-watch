@@ -90,6 +90,39 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   setTimeout(store.close, 0);
 });
 
+test('export: recent events surface in the JSON snapshot, newest first', () => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.addEvent('info', 'http', 'api: recovered');
+  store.addEvent('warn', 'http', 'api: down then up');
+  const out = exportStatus(store, {});
+  assert.ok(Array.isArray(out.events));
+  assert.equal(out.events.length, 2);
+  assert.deepEqual(out.events[0], {
+    ts: out.events[0].ts, level: 'warn', source: 'http', message: 'api: down then up',
+  }, 'newest event first');
+  assert.equal(out.events[1].level, 'info');
+  assert.equal(typeof out.events[0].ts, 'number', 'event ts is a number, matching the web /api/events shape');
+  setTimeout(store.close, 0);
+});
+
+test('export: renderStatusPage renders recent events with html-escaped messages', () => {
+  const store = new Store(':memory:');
+  const past = Date.now() - 60000;
+  store.setClock(() => past);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.addEvent('error', 'http', '<script>alert(1)</script> & "hi"');
+  store.addEvent('info', 'tls', 'api: cert refreshed');
+  const out = exportStatus(store, {}, '9.9.9');
+  const html = renderStatusPage(out);
+  assert.match(html, /<h2>recent events<\/h2>/);
+  assert.match(html, /api: cert refreshed/);
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.match(html, /&lt;script&gt;alert\(1\)/);
+  assert.match(html, /&quot;hi&quot;/);
+  setTimeout(store.close, 0);
+});
+
 test('export: health block surfaces monitor uptime/lastCheck in json + html', () => {
   const store = new Store(':memory:');
   const past = Date.now() - 300000;
