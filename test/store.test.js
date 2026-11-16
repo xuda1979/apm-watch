@@ -35,6 +35,18 @@ test('store: metrics series + retention', () => {
   s.close();
 });
 
+test('store: metrics series returns the latest points within the window', () => {
+  const s = new Store(':memory:');
+  for (let i = 0; i < 500; i++) s.saveMetric('http:x/latency', i, 1000 + i);
+  const series = s.series('http:x/latency', 0, 400);
+  assert.equal(series.length, 400);
+  // newest 400 of 500 -> values 100..499, ascending ts
+  assert.equal(series[0].value, 100);
+  assert.equal(series[series.length - 1].value, 499);
+  assert.ok(series[0].ts < series[series.length - 1].ts, 'ascending ts for plotting');
+  s.close();
+});
+
 test('store: events + recent', () => {
   const s = new Store(':memory:');
   s.addEvent('warn', 'http', 'x');
