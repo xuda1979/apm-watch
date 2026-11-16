@@ -37,6 +37,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cLat/);
   assert.match(html, /cTls/);
   assert.match(html, /cApm/);
+  // status table shows a per-row kind field alongside target/status/latency/detail
+  assert.match(html, /<th>target<\/th><th>status<\/th><th>kind<\/th><th>latency<\/th><th>detail<\/th>/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
