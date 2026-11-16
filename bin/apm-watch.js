@@ -189,7 +189,10 @@ async function cmdOnce(args) {
       exit_code: process.exitCode,
       results: results.map((r) => ({
         target: r.target, kind: r.kind, status: r.status,
-        latency_ms: r.latencyMs ?? null, detail: r.detail,
+        latency_ms: r.latencyMs ?? null,
+        status_code: r.statusCode ?? null,     // http only
+        days_remaining: r.daysRemaining ?? null, // tls only
+        detail: r.detail,
       })),
     }, null, 2));
     return;

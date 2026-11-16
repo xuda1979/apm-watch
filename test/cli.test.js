@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { worstStatus } from '../bin/apm-watch.js';
-import { startHttpServer } from './helpers/fixtures.js';
+import { startHttpServer, startHttpsServer } from './helpers/fixtures.js';
 
 const BIN = fileURLToPath(new URL('../bin/apm-watch.js', import.meta.url));
 
@@ -148,4 +148,25 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
+});
+
+test('cli: once --json includes numeric days_remaining for tls checks', async (t) => {
+  const srv = await startHttpsServer({ days: 15 });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'tls.json');
+  writeFileSync(cfg, JSON.stringify({
+    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: srv.port, rejectUnauthorized: false, warnDaysBefore: 30 }],
+    store: { path: path.join(dir, 'tls.db') },
+  }));
+  const { code, stdout, stderr } = await runOnceJson(cfg);
+  assert.equal(code, 1, `warn threshold in [1,30]d -> exit 1\nstderr:\n${stderr}`);
+  const doc = JSON.parse(stdout);
+  const tls = doc.results.find((r) => r.target === 'cert-soon');
+  assert.equal(tls.kind, 'tls');
+  assert.equal(tls.status, 'warn');
+  assert.equal(typeof tls.days_remaining, 'number');
+  assert.equal(tls.days_remaining, 15);
+  assert.equal(tls.status_code, null, 'http-only field is null for tls');
 });
