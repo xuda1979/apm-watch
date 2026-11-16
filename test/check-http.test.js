@@ -54,6 +54,14 @@ test('http checker: non-responding target times out -> error', async (t) => {
   const res = await checkEndpoint({ url: srv.url + '/hang', timeoutMs: 300 });
   assert.equal(res.status, 'error');
   assert.match(res.detail, /timeout/i);
+  assert.equal(res.timeoutMs, 300, 'configured abort timeout surfaces on the result');
+});
+
+test('http checker: default timeout surfaces on the result', async (t) => {
+  const srv = await startHttpServer({ '/ok': { status: 200, body: 'hello' } });
+  t.after(srv.close);
+  const res = await checkEndpoint({ url: srv.url + '/ok' });
+  assert.equal(res.timeoutMs, 5000, 'unset timeoutMs resolves to the 5000 default');
 });
 
 test('http checker: connection refused -> error', async () => {

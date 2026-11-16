@@ -57,6 +57,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.apm.maxSamples, 5000, 'collector sample-cap default surfaced too');
   // per-target slow-latency threshold map (web api parity): none configured -> {}
   assert.deepEqual(out.http.latencyThresholds, {}, 'empty-config http threshold map defaults to {}');
+  // per-target probe timeout map (web api parity): none configured -> {}
+  assert.deepEqual(out.http.timeoutMs, {}, 'empty-config http timeout map defaults to {}');
   // per-target cert warn-days threshold map (web api parity): none configured -> {}
   assert.deepEqual(out.tls.warnDaysBefore, {}, 'empty-config tls warn-days map defaults to {}');
   setTimeout(store.close, 0);

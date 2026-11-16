@@ -42,14 +42,15 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   // http rows stamp a per-target latency threshold but no error-rate threshold
   const http = onceJsonRow({
     target: 'api', kind: 'http', status: 'ok', ts: 1,
-    latencyMs: 4, method: 'GET', statusCode: 200, latencyThresholdMs: 250,
+    latencyMs: 4, method: 'GET', statusCode: 200, latencyThresholdMs: 250, timeoutMs: 8000,
     detail: 'HTTP 200 in 4ms',
   });
   assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
+  assert.equal(http.timeout_ms, 8000, 'configured abort timeout surfaces on http rows');
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
   assert.equal(http.p50_ms, null);
 
-  // tls rows carry neither apm threshold
+  // tls rows carry neither apm threshold nor http timeout
   const tls = onceJsonRow({
     target: 'cert', kind: 'tls', status: 'ok', ts: 2,
     daysRemaining: 200, warnDaysBefore: 30,
@@ -57,6 +58,7 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
     detail: 'expires in 200d',
   });
   assert.equal(tls.error_rate_threshold, null, 'apm-only field is null for tls');
+  assert.equal(tls.timeout_ms, null, 'http-only field is null for tls');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
 });
 
@@ -174,7 +176,7 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   writeFileSync(cfg, JSON.stringify({
     http: [
       { name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } },
-      { name: 'slow-svc', url: srv.url + '/slow', latencyThresholdMs: 1 },
+      { name: 'slow-svc', url: srv.url + '/slow', latencyThresholdMs: 1, timeoutMs: 1234 },
     ],
     store: { path: path.join(dir, 'json.db') },
   }));
@@ -193,6 +195,8 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(slow.method, 'GET');
   assert.equal(slow.latency_threshold_ms, 1, 'configured per-http latency threshold surfaces on once --json rows');
   assert.equal(ok.latency_threshold_ms, null, 'unconfigured http threshold is null, not dropped');
+  assert.equal(slow.timeout_ms, 1234, 'configured per-http abort timeout surfaces on once --json rows');
+  assert.equal(ok.timeout_ms, 5000, 'unconfigured http timeout defaults to 5000, not dropped');
   assert.equal(ok.error_rate_threshold, null, 'apm-only error-rate threshold is null on http rows');
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
