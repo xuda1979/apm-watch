@@ -283,6 +283,48 @@ test('cli: export --out file.html writes a self-contained status page', async (t
   assert.match(html, /apm-watch v1\.0\.0/);
 });
 
+test('cli: serve boots the web UI over an existing store and serves states + page', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'serve.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'serve.db') },
+  }));
+  // seed the store through `once` (runs checks + persists health meta), then serve it
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+
+  // `--port 0` lets the OS pick a free port; serve reports it on stdout
+  const child = spawn(process.execPath, [BIN, 'serve', '--config', cfg, '--port', '0'], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`serve did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // serve exposes the seeded store over HTTP
+  const states = await (await fetch(`http://127.0.0.1:${port}/api/states`)).json();
+  const ok = states.states.find((s) => s.target === 'ok-svc');
+  assert.ok(ok, 'seeded state served over http');
+  assert.equal(ok.status, 'ok');
+  assert.ok(states.health, 'health meta from the seeding run is served');
+  const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
+  assert.match(page, /apm-watch/);
+  assert.match(page, /api\/states/);
+});
+
 test('cli: unknown flags warn on stderr instead of silently dropping', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
