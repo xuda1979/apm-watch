@@ -67,6 +67,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.store.retentionDays, 7, 'unconfigured store retention surfaces as the 7d default');
   // alert repeat-interval (the engine's re-send dedup window): default 3600
   assert.equal(out.notifications.repeatIntervalSeconds, 3600, 'unconfigured alert repeat-interval surfaces as the 3600s default');
+  // the scheduler grid the engine's task intervals actually run on: defaults
+  assert.deepEqual(out.scheduler, { httpIntervalSeconds: 60, tlsIntervalSeconds: 300, apmIntervalSeconds: 60 }, 'default scheduler grid surfaces on the export JSON snapshot');
   setTimeout(store.close, 0);
 });
 
