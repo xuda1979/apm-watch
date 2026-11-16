@@ -68,4 +68,6 @@ test('tls: fetchCertChain against real TLS server gives chain', async (t) => {
   const rep = netChainToReport({ host: '127.0.0.1', port: srv.port, certs });
   assert.ok(rep.chain.length >= 1);
   assert.ok(rep.daysRemaining > 0 && rep.daysRemaining <= 40);
+  // network chain entries carry the same per-cert fields as inspectPemChain
+  assert.ok(rep.chain[0].validFrom, 'chain entries include validFrom (field parity)');
 });
