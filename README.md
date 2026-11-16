@@ -21,7 +21,8 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
   客户端，支持 AUTH PLAIN / STARTTLS），重复告警按 `repeatIntervalSeconds` 去重。
 - **UI**：
   - `tui`：终端面板（绿/黄/红 + latency sparkline）
-  - `web`：单页（状态表格 + 三层曲线：latency / TLS 剩余天数 / APM p50/p95）
+  - `web`：单页（状态表格 + 三层曲线：latency / TLS 剩余天数 / APM p50/p95
+    + 错误率曲线，阈值虚线）
 - **存储**：SQLite（`node:sqlite`，WAL）。`states`（状态快照）、`metrics`
   （时间序列）、`events`（告警/审计）。引擎后台任务按
   `store.retentionDays`（默认 7 天）自动裁剪旧数据，长跑不涨内存/磁盘。

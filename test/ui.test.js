@@ -23,6 +23,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
   store.saveMetric('apm:svc/p50', 20, Date.now());
   store.saveMetric('apm:svc/p95', 40, Date.now());
+  store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
   const server = createUiServer(store, { ui: { historySeconds: 3600 } });
   const port = await listen(server);
@@ -37,6 +38,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cLat/);
   assert.match(html, /cTls/);
   assert.match(html, /cApm/);
+  assert.match(html, /cApmErr/);
   // status table shows a per-row kind field alongside target/status/latency/detail
   assert.match(html, /<th>target<\/th><th>status<\/th><th>kind<\/th><th>latency<\/th><th>detail<\/th>/);
 
@@ -59,6 +61,9 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.ok(data.series['tls:remaining'].length >= 1);
   assert.ok(data.series['apm:p50'].length >= 1);
   assert.ok(data.series['apm:p95'].length >= 1);
+  assert.ok(data.series['apm:errorRate'].length >= 1);
+  assert.equal(data.series['apm:errorRate'][0].value, 0.1);
+  assert.equal(data.apm.errorRateThreshold, 0.05); // default threshold
   for (const pt of data.series['http:latency']) {
     assert.equal(typeof pt.ts, 'number');
     assert.equal(typeof pt.value, 'number');
