@@ -142,6 +142,8 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   store.saveMetric('http:api/latency', 20, Date.now());
   store.saveMetric('http:api/status', 200, Date.now() - 2000);
   store.saveMetric('http:api/status', 200, Date.now());
+  store.saveMetric('tls:api/remaining', 15, Date.now() - 2000);
+  store.saveMetric('tls:api/remaining', 12, Date.now());
   t.after(() => store.close());
 
   const tui = new Tui({ store, intervalMs: 1000 });
@@ -164,6 +166,9 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // status-code history section renders per http target
   assert.match(out, /── http status history ──/);
   assert.match(out, /api: ▁|api: ▂|api: ▃|api: █/);
+  // tls remaining-days history renders as its own per-target sparkline block
+  assert.match(out, /── tls remaining history ──/);
+  assert.match(out, /api: █▁/); // remaining 15 -> 12 over two samples
 });
 
 test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {
