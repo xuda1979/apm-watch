@@ -32,6 +32,10 @@ Commands:
           (exit 0 = all ok, 1 = any warn, 2 = any error — cron/CI friendly)
   export  write current status as JSON for a status page
   serve   start only the web UI over an existing store
+
+Flags:
+  --config FILE   config file path (default ./apm-watch.json)
+  --version, -V   print version and exit
 `);
 }
 
@@ -48,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--apm-port') args.apmPort = Number(argv[++i]);
     else if (a === '--interval') args.interval = Number(argv[++i]);
     else if (a === '--help' || a === '-h') args.help = true;
+    else if (a === '--version' || a === '-V') args.version = true;
     else if (a.startsWith('--')) { /* ignore unknown */ }
     else args._.push(a);
   }
@@ -57,6 +62,7 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) { usage(); return; }
+  if (args.version) { console.log(VERSION); return; }
   const cmd = args._[0] || 'run';
 
   switch (cmd) {

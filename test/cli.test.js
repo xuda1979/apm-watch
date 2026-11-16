@@ -40,6 +40,25 @@ function runOnce(configFile) {
   });
 }
 
+// Run a bare CLI invocation and resolve {code, stdout}.
+function runCli(...args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, ...args], { cwd: path.dirname(BIN) });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+test('cli: --version prints the version and does not start the monitor', async () => {
+  const { code, stdout } = await runCli('--version');
+  assert.equal(code, 0);
+  assert.match(stdout.trim(), /^1\.0\.0$/);
+});
+
 test('cli: once exits 0 when every check is ok', async (t) => {
   const srv = await startHttpServer({ '/ok': { status: 200, body: 'good' } });
   t.after(srv.close);
