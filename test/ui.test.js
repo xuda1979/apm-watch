@@ -41,6 +41,9 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cApmErr/);
   // status table shows a per-row kind field alongside target/status/latency/detail
   assert.match(html, /<th>target<\/th><th>status<\/th><th>kind<\/th><th>latency<\/th><th>detail<\/th>/);
+  // refresh() targets the meta <p> by id, not the <meta charset> tag, so the
+  // status line actually updates instead of forever showing "loading…"
+  assert.match(html, /\$\('#meta'\)\.textContent = 'updated '/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
