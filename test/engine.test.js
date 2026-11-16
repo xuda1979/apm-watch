@@ -216,3 +216,33 @@ test('engine: tick persists monitor self-health (uptime/lastCheck/status)', asyn
   assert.ok(h.value.lastCheckAt >= h.value.uptimeSince);
   assert.equal(h.value.status, 'error'); // api2 is down -> worst status
 });
+
+test('engine: scheduler-path check runs also persist monitor self-health (not just tick)', async (t) => {
+  const httpSrv = await startHttpServer({
+    '/ok': { status: 200, body: 'all good' },
+    '/bad': { status: 503, body: 'down' },
+  });
+  t.after(httpSrv.close);
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      http: [
+        { name: 'api', url: httpSrv.url + '/ok', assert: { statusCode: 200 } },
+        { name: 'bad', url: httpSrv.url + '/bad', assert: { statusCode: 200 } },
+      ],
+      notifications: { desktop: false },
+    },
+    log: () => {},
+  });
+  // `run` drives checks through individual methods (scheduler tasks), never
+  // tick; health meta must still be persisted for the web/tui/export surfaces.
+  await engine.runHttpCheck({ name: 'api', url: httpSrv.url + '/ok', assert: { statusCode: 200 } });
+  await engine.runHttpCheck({ name: 'bad', url: httpSrv.url + '/bad', assert: { statusCode: 200 } });
+  const h = store.getMeta('health');
+  assert.ok(h, 'health meta persisted from scheduler-path runs');
+  assert.ok(Number.isFinite(h.value.lastCheckAt));
+  assert.ok(Number.isFinite(h.value.uptimeSince));
+  assert.equal(h.value.status, 'error'); // latest run (bad) is error
+  assert.ok(h.value.lastCheckAt >= h.value.uptimeSince);
+});
