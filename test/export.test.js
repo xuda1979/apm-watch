@@ -5,11 +5,14 @@ import { Store } from '../lib/store.js';
 
 test('export: aggregates latest status across http/tls/apm target into JSON', () => {
   const store = new Store(':memory:');
+  let now = Date.now();
+  store.setClock(() => now);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  now += 1000;
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
   store.saveState({ target: 'api', kind: 'apm', status: 'warn', latencyMs: 320, detail: 'p50=200ms p95=320ms errors=0/10 (slow p95)' });
   store.saveState({ target: 'other', kind: 'http', status: 'error', detail: 'down' });
-
   const out = exportStatus(store, {});
   assert.equal(out.targets.length, 2);
   const api = out.targets.find((t) => t.target === 'api');
@@ -19,6 +22,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.apm.status, 'warn');
   assert.equal(api.apm.latency_ms, 320);
   assert.match(api.apm.detail, /slow p95/);
+  // time-weighted availability: api was up for all 2000ms of history
+  assert.equal(api.http.uptime_pct, 100);
   // overall summary + counts
   assert.equal(out.summary.overall, 'error');   // error outweighs warn
   assert.equal(out.summary.counts.ok, 0);
@@ -30,6 +35,9 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
 
 test('export: renderStatusPage builds a self-contained html snapshot', () => {
   const store = new Store(':memory:');
+  // backdate states so availability sees a nonzero window (same-ms saves -> 0ms).
+  const past = Date.now() - 60000;
+  store.setClock(() => past);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, detail: 'down' });
@@ -49,6 +57,8 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   assert.match(html, />other<\/td>/);
   assert.match(html, /HTTP 200/);
   assert.match(html, /expires in 12d/);
+  // uptime pct rendered in the http row detail
+  assert.match(html, /HTTP 200 · 100% uptime/);
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);

@@ -10,7 +10,9 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 ## 功能
 
 - **HTTP(S) 探测**：状态码断言 + 响应体关键字（`bodyIncludes`）断言，返回
-  状态码/延迟，超时（默认 5s）与连接失败记为 `error`。
+  状态码/延迟，超时（默认 5s）与连接失败记为 `error`。每个目标按
+  state 快照历史计算**时间加权可用率**（uptime%，warn 计为在线，与
+  Datadog 口径一致），显示在 Web 表格、导出 JSON 与 HTML 状态页。
 - **TLS 证书扫描**：通过 `tls.connect` 拉取真实服务器证书链，报告剩余天数；
   也支持纯 PEM 文件检查（`inspectPemChain` / tls 配置中的 `pemFile`），
   适合离线或无法直连的证书文件。
@@ -88,8 +90,8 @@ apm-watch serve [--config FILE] [--port PORT]
 ## 测试
 
 ```bash
-npm test             # 全部 41 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
-                     #   STARTTLS 升级、web/TUI UI、端到端 AC1–AC5）
+npm test             # 全部 50 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+                     #   STARTTLS 升级、web/TUI UI、可用率、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```
 
@@ -136,6 +138,7 @@ bin/apm-watch.js     # CLI 入口（run/demo/once/export/serve）
 lib/check-http.js    # HTTP 探测
 lib/check-tls.js     # 证书链扫描/解析
 lib/apm.js           # APM collector（HTTP span 接收 + 百分位）
+lib/availability.js  # 时间加权可用率（uptime%，warn 计为在线）
 lib/demo-agent.js    # 模拟上报服务
 lib/scheduler.js     # cron 网格
 lib/store.js         # SQLite 存储

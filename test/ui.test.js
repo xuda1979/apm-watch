@@ -78,6 +78,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.summary.counts.warn, 1);
   assert.equal(data.summary.counts.error, 0);
 
+  // time-weighted availability per http target over the history window
+  assert.ok(data.availability);
+  assert.equal(data.availability['api'].pct, 100);   // single ok snapshot -> up for the whole window
+  assert.equal(data.availability['api'].samples, 1);
+
   // events API: seeded store events, newest first
   store.addEvent('warn', 'http', 'down then up');
   store.addEvent('info', 'http', 'api: recovered');
@@ -101,6 +106,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
 
 test('ui: tui renders live status + latency sparkline', async (t) => {
   const store = new Store(':memory:');
+  // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
+  store.setClock(() => Date.now() - 60000);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
@@ -118,7 +125,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   }
   assert.match(out, /apm-watch/);
   assert.match(out, /api/);
-  assert.match(out, /http:ok:12ms/);
+  assert.match(out, /http:ok:12ms 100%/); // single ok snapshot -> full-window uptime
   assert.match(out, /cert:expires in 12d/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
