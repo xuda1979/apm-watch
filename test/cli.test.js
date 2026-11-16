@@ -170,3 +170,38 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.days_remaining, 15);
   assert.equal(tls.status_code, null, 'http-only field is null for tls');
 });
+
+test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {
+  const srv = await startHttpServer({ '/down': { status: 404, body: 'missing' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'err.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'down-svc', url: srv.url + '/down', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'err.db') },
+  }));
+  const { code, stdout } = await runOnce(cfg);
+  assert.equal(code, 2, `stdout:\n${stdout}`);
+  assert.match(stdout, /down-svc/);
+});
+
+test('cli: once --json reports error status_code and exit_code 2', async (t) => {
+  const srv = await startHttpServer({ '/down': { status: 404, body: 'missing' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'err-json.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'down-svc', url: srv.url + '/down', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'err-json.db') },
+  }));
+  const { code, stdout, stderr } = await runOnceJson(cfg);
+  assert.equal(code, 2, `stderr:\n${stderr}`);
+  const doc = JSON.parse(stdout);
+  assert.equal(doc.exit_code, 2);
+  const down = doc.results.find((r) => r.target === 'down-svc');
+  assert.equal(down.status, 'error');
+  assert.equal(down.status_code, 404, 'numeric status_code survives in error results');
+  assert.match(down.detail, /expected status 200, got 404/);
+});
