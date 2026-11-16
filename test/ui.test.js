@@ -120,3 +120,27 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
 });
+
+test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
+  store.saveMetric('apm:svc/p50', 20, Date.now() - 1000);
+  store.saveMetric('apm:svc/p95', 40, Date.now() - 1000);
+  store.saveMetric('apm:svc/errorRate', 0.03, Date.now());
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try {
+    tui.render();
+  } finally {
+    process.stdout.write = orig;
+  }
+  assert.match(out, /── apm history ──/);
+  assert.match(out, /svc: p50 20ms  p95 40ms/);
+  assert.match(out, /err 3\.0%/);
+  // both latency and error-rate sparklines render glyph blocks
+  assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
+});
