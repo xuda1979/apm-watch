@@ -35,6 +35,7 @@ Commands:
 
 Flags:
   --config FILE   config file path (default ./apm-watch.json)
+  --json          once: print results as JSON (for scripts/CI)
   --version, -V   print version and exit
 `);
 }
@@ -51,6 +52,7 @@ function parseArgs(argv) {
     else if (a === '--collect-addr') args.collectAddr = argv[++i];
     else if (a === '--apm-port') args.apmPort = Number(argv[++i]);
     else if (a === '--interval') args.interval = Number(argv[++i]);
+    else if (a === '--json') args.json = true;
     else if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--version' || a === '-V') args.version = true;
     else if (a.startsWith('--')) { /* ignore unknown */ }
@@ -160,30 +162,41 @@ async function cmdOnce(args) {
   ensureStoreDir(storePath);
   const store = new Store(storePath);
   const engine = new Engine({ store, config });
+  // Keep stdout a pure check report: engine status lines go to stderr so a
+  // `once --json` document (or `once | jot -g ...`) is never mixed with logs.
+  engine.log = (m) => console.error(`[apm-watch] ${m}`);
   const results = [];
   for (const h of config.http || []) {
     const r = await engine.runHttpCheck(h);
     results.push(r);
-    console.log(`${emoji(r.status)} http ${r.target}: ${r.detail}`);
   }
   for (const t of config.tls || []) {
     const r = await engine.runTlsCheck(t);
     results.push(r);
-    console.log(`${emoji(r.status)} tls ${r.target}: ${r.detail}`);
   }
   if (config.apm?.collect) {
     // `once` means "check each configured dimension once": APM services are
     // summarized from whatever the collector has in its window (empty when no
     // agent upstream is feeding it). No alerts here, matching http/tls.
     const { results: apmResults } = await engine.runApmCheck();
-    for (const r of apmResults) {
-      results.push(r);
-      console.log(`${emoji(r.status)} apm ${r.target}: ${r.detail}`);
-    }
+    results.push(...apmResults);
   }
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
   // 0 = all ok, 1 = any warn, 2 = any error. Matching Nagios conventions.
   process.exitCode = worstStatus(results);
+  if (args.json) {
+    console.log(JSON.stringify({
+      exit_code: process.exitCode,
+      results: results.map((r) => ({
+        target: r.target, kind: r.kind, status: r.status,
+        latency_ms: r.latencyMs ?? null, detail: r.detail,
+      })),
+    }, null, 2));
+    return;
+  }
+  for (const r of results) {
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${r.detail}`);
+  }
 }
 
 // Severity rank across the ok/warn/error status set. warn is "soft" failure,

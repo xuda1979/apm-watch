@@ -40,6 +40,21 @@ function runOnce(configFile) {
   });
 }
 
+// Same as runOnce but with `--json` so stdout is a single JSON document.
+function runOnceJson(configFile) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [BIN, 'once', '--config', configFile, '--json'], {
+      cwd: path.dirname(BIN),
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => (stdout += d));
+    child.stderr.on('data', (d) => (stderr += d));
+    child.on('error', reject);
+    child.on('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 // Run a bare CLI invocation and resolve {code, stdout}.
 function runCli(...args) {
   return new Promise((resolve, reject) => {
@@ -102,4 +117,35 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   // shape and `once` completes without crashing.
   const { code, stderr } = await runOnce(cfg);
   assert.equal(code, 0, `stderr:\n${stderr}`);
+});
+
+test('cli: once --json emits machine-readable results and the exit code', async (t) => {
+  const srv = await startHttpServer({
+    '/ok': { status: 200, body: 'good' },
+    '/slow': { status: 200, body: 'ok', delayMs: 60 },
+  });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'json.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [
+      { name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } },
+      { name: 'slow-svc', url: srv.url + '/slow', latencyThresholdMs: 1 },
+    ],
+    store: { path: path.join(dir, 'json.db') },
+  }));
+  const { code, stdout, stderr } = await runOnceJson(cfg);
+  assert.equal(code, 1, `stderr:\n${stderr}`);
+  const doc = JSON.parse(stdout);
+  assert.equal(doc.exit_code, 1);
+  assert.equal(doc.results.length, 2);
+  const ok = doc.results.find((r) => r.target === 'ok-svc');
+  const slow = doc.results.find((r) => r.target === 'slow-svc');
+  assert.equal(ok.status, 'ok');
+  assert.equal(slow.status, 'warn');
+  assert.equal(slow.kind, 'http');
+  // stdout is a pure JSON document — engine status lines go to stderr, never
+  // mixed into the machine-readable output
+  assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
 });
