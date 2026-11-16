@@ -186,6 +186,40 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /api: █▁/); // remaining 15 -> 12 over two samples
 });
 
+test('ui: tui latency-history rows annotate the per-target slow threshold (web chart parity)', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.saveState({ target: 'anon', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  for (const target of ['api', 'anon']) {
+    store.saveMetric(`http:${target}/latency`, 12, Date.now());
+  }
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000, latencyThresholds: { api: 200 } });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  // the configured threshold is annotated on its target's row, others stay bare
+  assert.match(out, /api: .*thr 200ms/);
+  assert.doesNotMatch(out, /anon: .*thr/);
+});
+
+test('ui: tui has no threshold marker when config supplies none', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.saveMetric('http:api/latency', 12, Date.now());
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /── latency history ──/);
+  assert.doesNotMatch(out, / thr /, 'no threshold annotation when the target has none configured');
+});
+
 test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {
   const store = new Store(':memory:');
   store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });

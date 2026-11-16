@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine } from '../lib/engine.js';
@@ -136,6 +136,7 @@ async function cmdRun(args) {
       store,
       intervalMs: 2000,
       historyMs: (config.ui?.historySeconds ?? 24 * 3600) * 1000, // match web charts window
+      latencyThresholds: httpLatencyThresholds(config),
       onExit: shutdown,
     });
     tui.start();
