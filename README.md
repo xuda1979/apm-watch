@@ -25,7 +25,8 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 - **存储**：SQLite（`node:sqlite`，WAL）。`states`（状态快照）、`metrics`
   （时间序列）、`events`（告警/审计）。引擎后台任务按
   `store.retentionDays`（默认 7 天）自动裁剪旧数据，长跑不涨内存/磁盘。
-- **`export`**：导出当前健康状态为 JSON，供 status page 使用。
+- **`export`**：导出当前健康状态为 JSON（`--out file.json`）或**自包含 HTML 状态页**
+  （`--out status.html`，零依赖单文件，可直接扔到静态托管/CDN）。
 
 ## 快速开始
 
