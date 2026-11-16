@@ -12,7 +12,7 @@ import { createUiServer } from '../lib/ui-server.js';
 import { Tui } from '../lib/ui-tui.js';
 import { startDemoAgent } from '../lib/demo-agent.js';
 import { checkEndpoint } from '../lib/check-http.js';
-import { fetchCertChain, netChainToReport } from '../lib/check-tls.js';
+import { fetchCertChain, netChainToReport, inspectPemChain } from '../lib/check-tls.js';
 import { desktopNotification } from '../lib/notify.js';
 
 const VERSION = '0.1.0';
@@ -158,21 +158,8 @@ async function cmdOnce(args) {
     console.log(`${emoji(r.status)} http ${r.target}: ${r.detail}`);
   }
   for (const t of config.tls || []) {
-    try {
-      const { certs } = await fetchCertChain(t);
-      const rep = netChainToReport({ host: t.host, port: t.port || 443, certs });
-      const days = rep.daysRemaining;
-      const threshold = t.warnDaysBefore ?? 30;
-      const fail = days === null;
-      let code;
-      if (fail) code = 'error';
-      else if (days <= 0) code = 'error';
-      else if (days <= threshold) code = 'warn';
-      else code = 'ok';
-      console.log(`${emoji(code)} tls ${t.name || t.host}: ${days === null ? 'no certificate' : days + 'd remaining'}${fail ? '' : days <= 0 ? ' EXPIRED' : ''}`);
-    } catch (e) {
-      console.log(`${emoji('error')} tls ${t.host}: ${e.message}`);
-    }
+    const r = await engine.runTlsCheck(t);
+    console.log(`${emoji(r.status)} tls ${r.target}: ${r.detail}`);
   }
 }
 

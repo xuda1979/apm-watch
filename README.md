@@ -12,7 +12,8 @@ Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `n
 - **HTTP(S) 探测**：状态码断言 + 响应体关键字（`bodyIncludes`）断言，返回
   状态码/延迟，超时（默认 5s）与连接失败记为 `error`。
 - **TLS 证书扫描**：通过 `tls.connect` 拉取真实服务器证书链，报告剩余天数；
-  支持纯 PEM 文件检查（`inspectPemChain`）。
+  也支持纯 PEM 文件检查（`inspectPemChain` / tls 配置中的 `pemFile`），
+  适合离线或无法直连的证书文件。
 - **简易 APM**：Demo 服务（`apm-watch demo`）POST span 到本地 collector，
   计算 p50/p95 与错误率并落库、上曲线。
 - **调度**：cron 风格网格，每项 check 独立间隔，30s–5m 可配，慢任务不重叠。
@@ -58,6 +59,8 @@ apm-watch serve [--config FILE] [--port PORT]
   ],
   "tls": [
     { "name": "my-site", "host": "example.com", "port": 443, "warnDaysBefore": 30 },
+    // 本地证书文件检查（离线/无法直连时）：
+    // { "name": "bundled-cert", "pemFile": "./cert-bundle.pem", "warnDaysBefore": 30 },
     // 自签/内网证书请配合：
     // "rejectUnauthorized": false, "servername": "my-host"
   ],
@@ -83,7 +86,7 @@ apm-watch serve [--config FILE] [--port PORT]
 ## 测试
 
 ```bash
-npm test             # 全部 36 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
+npm test             # 全部 39 项测试（node --test，含本地 mock SMTP/webhook 告警通道、
                      #   STARTTLS 升级、web/TUI UI、端到端 AC1–AC5）
 npm run test:memory  # 24h 模拟，断言 RSS < 200MB
 ```

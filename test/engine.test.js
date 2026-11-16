@@ -118,6 +118,55 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.ok(!alerts.some((a) => a.target === 'fast'), 'fast service must not alert');
 });
 
+test('engine: tls pemFile checks a local cert bundle without a socket', async (t) => {
+  const { startHttpsServer } = await import('./helpers/fixtures.js');
+  const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const soon = await startHttpsServer({ days: 15 });
+  const ok = await startHttpsServer({ days: 200 });
+  t.after(() => Promise.all([soon.close(), ok.close()]));
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'apmw-pem-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const soonFile = path.join(dir, 'soon.pem');
+  const okFile = path.join(dir, 'ok.pem');
+  writeFileSync(soonFile, soon.cert.crtPem);
+  writeFileSync(okFile, ok.cert.crtPem);
+
+  const store = new Store(':memory:');
+  const alerts = [];
+  const engine = new Engine({
+    store,
+    config: {
+      tls: [
+        { name: 'bundle-soon', pemFile: soonFile, warnDaysBefore: 30 },
+        { name: 'bundle-ok', pemFile: okFile, warnDaysBefore: 30 },
+      ],
+      notifications: { repeatIntervalSeconds: 3600, desktop: false },
+    },
+    log: () => {},
+  });
+  engine.notifyFn = async (r) => { alerts.push(r); return [{ ok: true }]; };
+
+  await engine.tick();
+
+  const states = store.latestStates();
+  const soonState = states.find((s) => s.target === 'bundle-soon');
+  const okState = states.find((s) => s.target === 'bundle-ok');
+  assert.equal(soonState.status, 'warn');
+  assert.match(soonState.detail, /expires in \d+d \(threshold 30d\)/);
+  assert.equal(okState.status, 'ok');
+  assert.ok(alerts.some((a) => a.status === 'warn' && a.target === 'bundle-soon'));
+  assert.ok(!alerts.some((a) => a.target === 'bundle-ok' && a.status !== 'ok'));
+
+  // missing file -> error state, not a crash
+  const res = await engine.runTlsCheck({ name: 'missing', pemFile: path.join(dir, 'nope.pem') });
+  assert.equal(res.status, 'error');
+  assert.match(res.detail, /ENOENT|no such file/i);
+});
+
 test('engine: per-check intervalSeconds overrides the scheduler-wide default', () => {
   const store = new Store(':memory:');
   const engine = new Engine({
