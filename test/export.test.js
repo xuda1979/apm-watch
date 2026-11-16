@@ -55,6 +55,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.apm.latencyThresholdMs, null);
   assert.equal(out.apm.windowMs, 60_000, 'collector window defaults surfaced like the other apm knobs');
   assert.equal(out.apm.maxSamples, 5000, 'collector sample-cap default surfaced too');
+  assert.equal(out.apm.collect, false, 'unconfigured apm collection surfaces as false on the export snapshot');
   // per-target slow-latency threshold map (web api parity): none configured -> {}
   assert.deepEqual(out.http.latencyThresholds, {}, 'empty-config http threshold map defaults to {}');
   // per-target probe timeout map (web api parity): none configured -> {}

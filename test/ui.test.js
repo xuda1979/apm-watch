@@ -108,6 +108,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.apm.latencyThresholdMs, 500);  // configured slow-latency threshold
   assert.equal(data.apm.windowMs, 90_000);         // configured collector window
   assert.equal(data.apm.maxSamples, 7);            // configured collector sample-cap
+  assert.equal(data.apm.collect, false, 'unconfigured apm collection surfaces as false on the web api');
   assert.deepEqual(data.http.latencyThresholds, { api: 200 }, 'per-target latency thresholds reach the web api');
   assert.deepEqual(data.http.timeoutMs, { api: 3000 }, 'per-target probe timeouts reach the web api');
   assert.deepEqual(data.tls.warnDaysBefore, { api: 30 }, 'per-target cert warn thresholds reach the web api');

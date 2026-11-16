@@ -165,6 +165,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.apm.latencyThresholdMs, 800, 'configured apm slow-latency threshold surfaces in once --json');
   assert.equal(doc.apm.windowMs, 120_000, 'configured collector window surfaces in once --json');
   assert.equal(doc.apm.maxSamples, 3, 'configured collector sample-cap surfaces in once --json');
+  assert.equal(doc.apm.collect, true, 'configured apm collection flag surfaces in once --json');
   assert.equal(doc.store.retentionDays, 21, 'configured store retention surfaces in once --json');
   assert.equal(doc.notifications.repeatIntervalSeconds, 1800, 'configured alert repeat-interval surfaces in once --json');
   assert.equal(doc.scheduler.apmIntervalSeconds, 90, 'configured apm scheduler interval surfaces in once --json');
