@@ -44,6 +44,13 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(other.apm, null);
   // time-weighted availability: api was up for all 2000ms of history
   assert.equal(api.http.uptime_pct, 100);
+  // uptime_ms mirrors the same window (web api availability-map parity): all-up
+  // target -> 0 down ms, and the snapshot count rides along
+  assert.equal(api.http.uptime_ms.down_ms, 0);
+  assert.ok(api.http.uptime_ms.up_ms >= api.http.uptime_ms.total_ms);
+  assert.equal(api.http.uptime_ms.samples, 2);
+  // zero-window target keeps the sibling null (uptime_pct parity on the same row)
+  assert.equal(other.http.uptime_ms, null);
   // overall summary + counts
   assert.equal(out.summary.overall, 'error');   // error outweighs warn
   assert.equal(out.summary.counts.ok, 0);
