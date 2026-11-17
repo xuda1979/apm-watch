@@ -153,6 +153,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
     store: { path: path.join(dir, 'apm-only.db'), retentionDays: 21 },
     notifications: { repeatIntervalSeconds: 1800 },
     scheduler: { apmIntervalSeconds: 90 },
+    ui: { historySeconds: 43200 },
   }));
   // No agent is feeding the collector in this fresh process, so the APM
   // summary is empty — what matters is that validation stops rejecting the
@@ -173,6 +174,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.scheduler.apmIntervalSeconds, 90, 'configured apm scheduler interval surfaces in once --json');
   assert.equal(doc.scheduler.httpIntervalSeconds, 60, 'unconfigured http scheduler interval defaults to 60s');
   assert.equal(doc.scheduler.tlsIntervalSeconds, 300, 'unconfigured tls scheduler interval defaults to 300s');
+  assert.equal(doc.ui.historySeconds, 43200, 'configured ui history window surfaces in once --json');
   // per-kind threshold/timeout/interval mirror maps (web + export parity): with
   // no http/tls entries configured the maps are {}, not dropped from the envelope
   assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');

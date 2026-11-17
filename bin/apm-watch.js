@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals, uiHistorySeconds } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine, retentionDays } from '../lib/engine.js';
@@ -210,6 +210,7 @@ async function cmdOnce(args) {
       store: { retentionDays: retentionDays(config?.store) },
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600 },
       scheduler: schedulerIntervals(config),
+      ui: { historySeconds: uiHistorySeconds(config) },
       results: results.map(onceJsonRow),
     }, null, 2));
     return;

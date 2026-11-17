@@ -127,6 +127,9 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.scheduler.httpIntervalSeconds, 45, "unit-string '45s' resolves to 45s");
   assert.equal(data.scheduler.tlsIntervalSeconds, 120, 'plain tls interval surfaces as configured');
   assert.equal(data.scheduler.apmIntervalSeconds, 120, "'2m' resolves to 120s");
+  // the availability/series history window the charts aggregate over, resolved
+  // exactly like the engine consumer (`config.ui.historySeconds`, 24h default)
+  assert.equal(data.ui.historySeconds, 3600, 'configured ui history window reaches the web api');
   // the cTls chart is drawn with the per-target threshold map so the browser can
   // dash-mark each cert's configured warn day (web latency-chart parity)
   assert.match(html, /drawLines\(\$\('#cTls'\), data\.series\['tls:remaining'\], 'days', data\.tls\.warnDaysBefore\)/);

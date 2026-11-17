@@ -130,6 +130,24 @@ test('validate: notifications.repeatIntervalSeconds typos that would corrupt the
       `repeatIntervalSeconds=${JSON.stringify(v)} must be accepted`,
     );
   }
+  // ui.historySeconds gates the availability + series window on every surface
+  // (web/export/TUI: all multiply by 1000 directly) — same "plain positive
+  // seconds only" concern: a unit string or NaN would silently fall back to the
+  // 24h default window.
+  for (const v of [0, -1, -3600, '1d', '6h', 'every-hour']) {
+    assert.match(
+      validateConfig({ http: [], tls: [], ui: { historySeconds: v } }).join('\n'),
+      /config\.ui\.historySeconds must be a positive number of seconds/,
+      `ui.historySeconds=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  for (const v of [60, 3600, 43200, 86400]) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], ui: { historySeconds: v } }),
+      [],
+      `ui.historySeconds=${JSON.stringify(v)} must be accepted`,
+    );
+  }
 });
 
 test('validate: non-object section is caught', () => {

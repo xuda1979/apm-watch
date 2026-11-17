@@ -81,6 +81,9 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.notifications.repeatIntervalSeconds, 3600, 'unconfigured alert repeat-interval surfaces as the 3600s default');
   // the scheduler grid the engine's task intervals actually run on: defaults
   assert.deepEqual(out.scheduler, { httpIntervalSeconds: 60, tlsIntervalSeconds: 300, apmIntervalSeconds: 60 }, 'default scheduler grid surfaces on the export JSON snapshot');
+  // availability/series history window the snapshot aggregates over: ui.historySeconds
+  // (web api parity), default 24h when unconfigured
+  assert.equal(out.ui.historySeconds, 86400, 'unconfigured ui history window surfaces as the 24h default on the export snapshot');
   setTimeout(store.close, 0);
 });
 
