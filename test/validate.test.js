@@ -130,6 +130,23 @@ test('validate: notifications.repeatIntervalSeconds typos that would corrupt the
       `repeatIntervalSeconds=${JSON.stringify(v)} must be accepted`,
     );
   }
+  // notifications.desktop gates the desktop alert channel via a strict `!==
+  // false` (engine.js _defaultNotify) — a "no"/"false"/0/1 string typo would
+  // silently keep desktop popups on, so only real booleans pass.
+  for (const v of ['no', 'false', 'true', 0, 1]) {
+    assert.match(
+      validateConfig({ http: [], tls: [], notifications: { desktop: v } }).join('\n'),
+      /config\.notifications\.desktop must be a boolean/,
+      `notifications.desktop=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  for (const v of [true, false]) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], notifications: { desktop: v } }),
+      [],
+      `notifications.desktop=${JSON.stringify(v)} must be accepted`,
+    );
+  }
   // ui.historySeconds gates the availability + series window on every surface
   // (web/export/TUI: all multiply by 1000 directly) — same "plain positive
   // seconds only" concern: a unit string or NaN would silently fall back to the

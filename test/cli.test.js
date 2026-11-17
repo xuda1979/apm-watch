@@ -151,7 +151,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   writeFileSync(cfg, JSON.stringify({
     apm: { collect: true, errorRateThreshold: 0.12, latencyThresholdMs: 800, windowMs: 120_000, maxSamples: 3 },
     store: { path: path.join(dir, 'apm-only.db'), retentionDays: 21 },
-    notifications: { repeatIntervalSeconds: 1800 },
+    notifications: { repeatIntervalSeconds: 1800, desktop: false },
     scheduler: { apmIntervalSeconds: 90 },
     ui: { historySeconds: 43200 },
   }));
@@ -171,6 +171,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.apm.collect, true, 'configured apm collection flag surfaces in once --json');
   assert.equal(doc.store.retentionDays, 21, 'configured store retention surfaces in once --json');
   assert.equal(doc.notifications.repeatIntervalSeconds, 1800, 'configured alert repeat-interval surfaces in once --json');
+  assert.equal(doc.notifications.desktop, false, 'configured desktop-notification gate surfaces in once --json');
   assert.equal(doc.scheduler.apmIntervalSeconds, 90, 'configured apm scheduler interval surfaces in once --json');
   assert.equal(doc.scheduler.httpIntervalSeconds, 60, 'unconfigured http scheduler interval defaults to 60s');
   assert.equal(doc.scheduler.tlsIntervalSeconds, 300, 'unconfigured tls scheduler interval defaults to 300s');

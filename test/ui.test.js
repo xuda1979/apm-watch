@@ -123,6 +123,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.deepEqual(data.tls.intervalSeconds, { api: 90 }, 'per-check tls interval 90 beats the scheduler-wide 120 and reaches the web api');
   assert.equal(data.store.retentionDays, 14, 'configured store retention reaches the web api');
   assert.equal(data.notifications.repeatIntervalSeconds, 7200, 'configured alert repeat-interval reaches the web api');
+  assert.equal(data.notifications.desktop, true, 'unconfigured desktop-notification gate defaults to on (engine `!== false` parity) on the web api');
   // the scheduler grid, resolved + clamped exactly like the engine's buildTasks
   assert.equal(data.scheduler.httpIntervalSeconds, 45, "unit-string '45s' resolves to 45s");
   assert.equal(data.scheduler.tlsIntervalSeconds, 120, 'plain tls interval surfaces as configured');
