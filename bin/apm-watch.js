@@ -12,6 +12,7 @@ import { createUiServer } from '../lib/ui-server.js';
 import { Tui } from '../lib/ui-tui.js';
 import { startDemoAgent } from '../lib/demo-agent.js';
 import { exportStatus, renderStatusPage } from '../lib/export.js';
+import { availability } from '../lib/availability.js';
 
 const VERSION = '1.0.0';
 export const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
@@ -198,6 +199,20 @@ async function cmdOnce(args) {
     const { results: apmResults } = await engine.runApmCheck();
     results.push(...apmResults);
   }
+  // Availability/uptime rides the http rows like the web /api/states
+  // availability map, export uptime_pct/uptime_ms, and the TUI uptime suffix
+  // (inc 58 parity): computed over the same ui history window and gated
+  // exactly like export.js — pct null on a zero-width window, breakdown only
+  // when the window has a positive span (totalMs > 0).
+  const since = Date.now() - uiHistorySeconds(config) * 1000;
+  for (const r of results) {
+    if (r.kind !== 'http') continue;
+    const avail = availability(store.history(r.target, 'http', since), Date.now());
+    r.uptimePct = avail && avail.pct != null ? avail.pct : null;
+    r.uptimeMs = avail && avail.totalMs > 0
+      ? { up_ms: avail.upMs, down_ms: avail.downMs, total_ms: avail.totalMs, samples: avail.samples }
+      : null;
+  }
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
   // 0 = all ok, 1 = any warn, 2 = any error. Matching Nagios conventions.
   process.exitCode = worstStatus(results);
@@ -249,7 +264,10 @@ async function cmdOnce(args) {
     const latency = r.kind === 'http' && r.latencyMs != null && !/ms/.test(r.detail ?? '')
       ? ` · ${r.latencyMs.toFixed(0)}ms`
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${tls}`);
+    // availability rides the human http row like the export html / TUI uptime
+    // suffix (inc 58 parity): ` · N% uptime`, gated on a computed pct
+    const uptime = r.kind === 'http' && r.uptimePct != null ? ` · ${r.uptimePct}% uptime` : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}`);
   }
 }
 
@@ -292,6 +310,8 @@ export function onceJsonRow(r) {
     errors: r.errors ?? null,                // apm only
     samples: r.samples ?? null,              // apm only
     error_rate_threshold: r.errorRateThreshold ?? null, // apm only (stamped by runApmCheck, inc 33)
+    uptime_pct: r.uptimePct ?? null, // http only (computed in cmdOnce, inc 58)
+    uptime_ms: r.uptimeMs ?? null,   // http only (breakdown, export.js:43 gates)
     detail: r.detail,
   };
 }

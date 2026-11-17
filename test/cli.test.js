@@ -39,11 +39,14 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(apm.latency_threshold_ms, 800, 'apm latency threshold rides the shared http/apm field');
   assert.equal(apm.error_rate, 0.13);
   assert.equal(apm.status_code, null, 'http-only field is null for apm');
+  assert.equal(apm.uptime_pct, null, 'http-only availability pct is null on apm rows');
+  assert.equal(apm.uptime_ms, null, 'http-only availability breakdown is null on apm rows');
 
   // http rows stamp a per-target latency threshold but no error-rate threshold
   const http = onceJsonRow({
     target: 'api', kind: 'http', status: 'ok', ts: 1,
     latencyMs: 4, method: 'GET', statusCode: 200, latencyThresholdMs: 250, timeoutMs: 8000,
+    uptimePct: 99.97, uptimeMs: { up_ms: 9997, down_ms: 3, total_ms: 10000, samples: 3 },
     detail: 'HTTP 200 in 4ms',
   });
   assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
@@ -51,6 +54,8 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
   assert.equal(http.p50_ms, null);
   assert.equal(http.p95_ms, null, 'apm-only p95 slot stays null on http rows');
+  assert.equal(http.uptime_pct, 99.97, 'http availability percentage maps to its row field');
+  assert.deepEqual(http.uptime_ms, { up_ms: 9997, down_ms: 3, total_ms: 10000, samples: 3 }, 'http availability breakdown maps up_ms/down_ms/total_ms/samples');
 
   // tls rows carry neither apm threshold nor http verb, but stamp the
   // cert-fetch socket timeout like http rows stamp the probe abort timeout
@@ -63,6 +68,8 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(tls.error_rate_threshold, null, 'apm-only field is null for tls');
   assert.equal(tls.timeout_ms, 4000, 'cert-fetch socket timeout surfaces on tls rows');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
+  assert.equal(tls.uptime_pct, null, 'http-only availability pct is null on tls rows');
+  assert.equal(tls.uptime_ms, null, 'http-only availability breakdown is null on tls rows');
 });
 
 // Run `node bin/apm-watch.js once --config <file>` and resolve {code, stdout}.
@@ -220,6 +227,18 @@ test('cli: once --json emits machine-readable results and the exit code', async 
     ],
     store: { path: path.join(dir, 'json.db') },
   }));
+  // Seed backdated ok-svc history so the availability breakdown is
+  // deterministic: two stored snapshots ~1s apart plus the live run's row give
+  // a guaranteed nonzero window (a fresh single snapshot can collapse to a
+  // same-ms window and report pct null).
+  const { Store } = await import('../lib/store.js');
+  const seeded = new Store(path.join(dir, 'json.db'));
+  let seedNow = Date.now() - 5000;
+  seeded.setClock(() => seedNow);
+  seeded.saveState({ target: 'ok-svc', kind: 'http', status: 'ok', latencyMs: 3, detail: 'HTTP 200 in 3ms', method: 'GET', statusCode: 200 });
+  seedNow += 1000;
+  seeded.saveState({ target: 'ok-svc', kind: 'http', status: 'ok', latencyMs: 4, detail: 'HTTP 200 in 4ms', method: 'GET', statusCode: 200 });
+  seeded.close();
   const { code, stdout, stderr } = await runOnceJson(cfg);
   assert.equal(code, 1, `stderr:\n${stderr}`);
   const doc = JSON.parse(stdout);
@@ -249,6 +268,14 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
+  // availability/uptime rides the http rows like the web /api/states
+  // availability map, export uptime_pct/uptime_ms, and the TUI uptime suffix
+  // (inc-58 parity): the seeded history + live run give a 3-sample all-ok window
+  assert.equal(ok.uptime_pct, 100, 'availability pct surfaces on once --json http rows');
+  assert.equal(ok.uptime_ms.samples, 3, 'seeded + live ok-svc snapshots all count toward the breakdown');
+  assert.equal(ok.uptime_ms.down_ms, 0, 'all-ok history yields zero downtime');
+  assert.equal(ok.uptime_ms.up_ms, ok.uptime_ms.total_ms, 'up duration covers the whole window');
+  assert.equal(typeof ok.uptime_ms.total_ms, 'number', 'total duration surfaces as a number');
 });
 
 test('cli: once --json reports the configured http verb (POST) per check', async (t) => {
@@ -291,6 +318,8 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(typeof tls.days_remaining, 'number');
   assert.equal(tls.days_remaining, 15);
   assert.equal(tls.status_code, null, 'http-only field is null for tls');
+  assert.equal(tls.uptime_pct, null, 'http-only availability pct is null on tls rows');
+  assert.equal(tls.uptime_ms, null, 'http-only availability breakdown is null on tls rows');
   assert.equal(Array.isArray(tls.chain), true);
   assert.ok(tls.chain.length >= 1, 'valid leaf cert -> chain entries present');
   assert.equal(typeof tls.valid_chain, 'boolean');
