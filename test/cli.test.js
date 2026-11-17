@@ -426,7 +426,7 @@ test('cli: once exits 2 when a check errors (asserted status mismatch)', async (
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const cfg = path.join(dir, 'err.json');
   writeFileSync(cfg, JSON.stringify({
-    http: [{ name: 'down-svc', url: srv.url + '/down', assert: { statusCode: 200 } }],
+    http: [{ name: 'down-svc', url: srv.url + '/down', assert: { statusCode: 200, bodyIncludes: 'missing' } }],
     store: { path: path.join(dir, 'err.db') },
   }));
   const { code, stdout } = await runOnce(cfg);
@@ -439,6 +439,11 @@ test('cli: once exits 2 when a check errors (asserted status mismatch)', async (
   // row like the tui/web/export latency columns always surface it (inc-55 parity)
   assert.match(stdout, /expected status 200, got 404 · \d+ms/, `numeric latency surfaces when the detail lacks it\nstdout:\n${stdout}`);
   assert.doesNotMatch(stdout, /expected status 200, got 404 · \d+ms · \d+ms/, 'latency is appended once');
+  // judged-against http assert criteria ride the row like the tui row (inc-65
+  // parity): the assert block's expected status + required body substring stamp
+  // onto the engine result and annotate the report even when the status check
+  // failed first (the body probe still carries the 'missing' marker as judged)
+  assert.match(stdout, /exp 200 body "missing"/, `assert criteria annotate the error row\nstdout:\n${stdout}`);
 });
 
 test('cli: once --json reports error status_code and exit_code 2', async (t) => {

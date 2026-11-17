@@ -66,6 +66,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /s\.kind === 'http'/);
   assert.match(html, /s\.method/);
   assert.match(html, /s\.status_code/);
+  // the browser-side table renderer surfaces the judged-against http assert
+  // criteria (export page / TUI / once parity: /api/states sends
+  // expected_status_code + body_includes, the row renderer used to drop them)
+  assert.match(html, /s\.expected_status_code/);
+  assert.match(html, /s\.body_includes/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);

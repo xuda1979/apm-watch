@@ -273,7 +273,15 @@ async function cmdOnce(args) {
     // availability rides the human http row like the export html / TUI uptime
     // suffix (inc 58 parity): ` · N% uptime`, gated on a computed pct
     const uptime = r.kind === 'http' && r.uptimePct != null ? ` · ${r.uptimePct}% uptime` : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}`);
+    // judged-against http assert criteria ride the row like the tui row / web
+    // table (inc 65 parity, inc 64 ` exp N` / ` body "s"` format): stamped onto
+    // each engine result by check-http.js finalize (expectedStatusCode/
+    // bodyIncludes), so no new config maps — null-guarded, so targets without
+    // an `assert` block keep the bare row.
+    const assertAnno = r.kind === 'http' && (r.expectedStatusCode != null || r.bodyIncludes != null)
+      ? `${r.expectedStatusCode != null ? ` exp ${r.expectedStatusCode}` : ''}${r.bodyIncludes != null ? ` body "${r.bodyIncludes}"` : ''}`
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}`);
   }
 }
 

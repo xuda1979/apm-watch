@@ -140,7 +140,10 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d', validChain: false, chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }] });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, detail: 'down' });
   store.saveState({ target: 'evil', kind: 'http', status: 'ok', latencyMs: 1, detail: '<script>alert(1)</script>& "x"' });
-  const out = exportStatus(store, {}, '9.9.9');
+  // api is configured with an http assert block so the judged-against criteria
+  // (expected status 201 + body marker "welcome") render on its row like the
+  // tui/web/once rows (inc-65 parity) — the JSON block carries them regardless
+  const out = exportStatus(store, { http: [{ name: 'api', assert: { statusCode: 201, bodyIncludes: 'welcome' } }] }, '9.9.9');
   const html = renderStatusPage(out);
 
   assert.match(html, /^<!doctype html>/);
@@ -167,6 +170,10 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   // (web table row parity: export JSON carries method/status_code, the page
   // renderer used to drop them, the row now shows `HTTP 200 · GET 200 · 100%`)
   assert.match(html, /HTTP 200 · GET 200 · 100% uptime/);
+  // judged-against http assert criteria render on the row detail after uptime
+  // (web table + TUI + once parity, inc-65): the detail is escaped as a whole,
+  // so the body marker's quotes render as &quot;
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot;/, 'assert criteria annotate the export page http row');
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);
