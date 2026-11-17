@@ -102,9 +102,19 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // same config-global defaults, null off-kind
   assert.equal(svcApm.error_rate_threshold, 0.05, 'unconfigured apm error-rate threshold resolves to the 0.05 default on the web api row');
   assert.equal(svcApm.latency_threshold_ms, 500, 'configured apm slow-latency threshold reaches the web api row');
+  assert.equal(svcApm.timeout_ms, null, 'apm rows carry no per-check abort timeout');
+  assert.equal(svcApm.warn_days_before, null, 'apm rows carry no tls warn-days threshold');
   assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
-  assert.equal(apiHttp.latency_threshold_ms, null, 'http rows carry no apm latency threshold');
+  // the per-row judged-against threshold / abort timeout fields ride the web
+  // api rows on the same shared slot once --json uses (latency_threshold_ms:
+  // http per-target, timeout_ms: http probe abort, warn_days_before: tls)
+  assert.equal(apiHttp.latency_threshold_ms, 200, 'configured per-http latency threshold surfaces on the web api row');
+  assert.equal(apiHttp.timeout_ms, 3000, 'configured per-http abort timeout surfaces on the web api row');
+  assert.equal(apiHttp.warn_days_before, null, 'http rows carry no tls warn-days threshold');
   assert.equal(apiTls.error_rate_threshold, null, 'tls rows carry no apm error-rate threshold');
+  assert.equal(apiTls.latency_threshold_ms, null, 'tls rows carry no latency threshold');
+  assert.equal(apiTls.timeout_ms, 4000, 'configured cert-fetch socket timeout surfaces on the web api row');
+  assert.equal(apiTls.warn_days_before, 30, 'configured cert warn-days threshold surfaces on the web api row');
 
   // history curves present, keyed per target (so the browser can draw one
   // line per endpoint), points in seconds ts space
