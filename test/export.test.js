@@ -93,6 +93,11 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
   // after the resolved cadence, exactly like the JSON http block carries it
   assert.match(html2, /HTTP 200 · POST 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 3000ms · every 1m · thr 200ms/, 'configured slow-latency threshold annotates the export page http row');
+  // the judged-against cert warn-days threshold rides the tls row too (inc 74
+  // parity): api carries warnDaysBefore 14 in cfg2, so the detail appends
+  // ` · warn 14d` after the resolved cadence, exactly like the JSON tls block
+  // carries it and the TUI history section annotates it
+  assert.match(html2, /expires in 12d · \/CN=fixture\.test · timeout 4000ms · every 5m · warn 14d/, 'configured cert warn-days threshold annotates the export page tls row');
   assert.deepEqual(out2.http.latencyThresholds, { api: 200 }, 'mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertStatusCodes, { api: 201 }, 'assert status mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertBodyIncludes, { api: 'welcome' }, 'assert body mirror block matches the per-target resolved map');

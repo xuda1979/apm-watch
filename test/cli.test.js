@@ -391,6 +391,11 @@ test('cli: once human output surfaces tls chain metadata (leaf subject)', async 
   assert.match(stdout, /  chain: CN=fixture\.test -> CN=fixture\.test/, `multi-cert chain path surfaces in the human report\nstdout:\n${stdout}`);
   // a valid chain must not be flagged as broken
   assert.doesNotMatch(stdout, /chain broken/);
+  // the judged-against cert warn-days threshold rides the row like the tui /
+  // web / export rows (inc 74 parity): the engine stamps warnDaysBefore on every
+  // runTlsCheck result (resolved to the configured 30), so the human row
+  // annotates ` warn 30d` after the chain path
+  assert.match(stdout, /tls cert-soon: expires in 15d.*warn 30d/, `cert warn-days threshold surfaces in the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once --json nulls the chain when a tls check fails', async (t) => {

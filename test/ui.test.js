@@ -90,6 +90,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // the row renderer used to drop it — the `· thr Nms` cell mirrors the chart's
   // dashed line the threshold draws)
   assert.match(html, /s\.kind === 'http' && s\.latency_threshold_ms /);
+  // the browser-side table renderer surfaces the judged-against tls warn-days
+  // threshold (export page / TUI / once parity: /api/states sends tls
+  // warn_days_before, the row renderer used to drop it — the `· warn Nd` cell
+  // mirrors the dashed tls chart line and the TUI history annotation)
+  assert.match(html, /s\.warn_days_before/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
@@ -271,7 +276,10 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the per-probe slow-latency threshold rides the rows too (inc 73 parity):
   // threaded through the same per-target map the sparkline (thr Nms) carries —
   // ` thr 400ms` on the broken http row when configured, others stay bare.
-  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 }, httpIntervalSeconds: { broken: 55 }, tlsIntervalSeconds: { api: 120 }, latencyThresholds: { broken: 400 } });
+  // the judged-against cert warn-days threshold rides the tls row too (inc 74
+  // parity): threaded through the same per-target map the web /api/states rows +
+  // export JSON + history section carry — ` warn 30d` on the api tls row.
+  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 }, httpIntervalSeconds: { broken: 55 }, tlsIntervalSeconds: { api: 120 }, latencyThresholds: { broken: 400 }, tlsWarnDaysBefore: { api: 30 } });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -296,7 +304,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // broken row carries `timeout 1234ms`, the api tls row carries `timeout 5000ms`,
   // and unconfigured targets stay bare
   assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms every 55s thr 400ms/);
-  assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m/);
+  assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m warn 30d/);
   assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
   assert.match(out, /cert:expires in 12d/);
   // unconfigured targets carry no run-cadence annotation: the api http row has
@@ -306,6 +314,9 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the api http row has no entry in latencyThresholds (only broken does), so
   // its line stays bare of `thr`
   assert.doesNotMatch(out, /ok  api  http:.* thr /, 'unconfigured http target carries no slow-latency threshold annotation');
+  // the tls warn-days threshold annotates the api tls row (inc 74 parity), while
+  // the http row carries no cert-warn annotation at all
+  assert.doesNotMatch(out, /ok  api  http:.* warn /, 'http rows carry no cert warn-days annotation');
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
   // per-cert chain path surfaces in the row, leaf-first (web/export tooltip
