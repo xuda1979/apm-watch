@@ -36,6 +36,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // like the empty mirror maps
   assert.equal(api.http.latency_threshold_ms, null, 'unconfigured http slow-latency threshold is null on the export snapshot');
   assert.equal(api.http.timeout_ms, null, 'unconfigured http abort timeout is null on the export snapshot');
+  assert.equal(api.http.expected_status_code, null, 'unconfigured http assert status code is null on the export snapshot');
+  assert.equal(api.http.body_includes, null, 'unconfigured http assert body marker is null on the export snapshot');
   assert.equal(api.tls.warn_days_before, null, 'unconfigured tls warn-days threshold is null on the export snapshot');
   assert.equal(api.tls.timeout_ms, null, 'unconfigured tls cert-fetch timeout is null on the export snapshot');
   assert.equal(api.tls.days_remaining, 12);
@@ -61,16 +63,20 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // sets the http/tls knobs, resolved from the same per-target maps the
   // top-level mirror blocks carry
   const cfg2 = {
-    http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000 }],
+    http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, assert: { statusCode: 201, bodyIncludes: 'welcome' } }],
     tls: [{ name: 'api', warnDaysBefore: 14, timeoutMs: 4000 }],
   };
   const out2 = exportStatus(store, cfg2);
   const api2 = out2.targets.find((t) => t.target === 'api');
   assert.equal(api2.http.latency_threshold_ms, 200, 'configured http slow-latency threshold surfaces on the export snapshot');
   assert.equal(api2.http.timeout_ms, 3000, 'configured http abort timeout surfaces on the export snapshot');
+  assert.equal(api2.http.expected_status_code, 201, 'configured assert status code surfaces on the export snapshot');
+  assert.equal(api2.http.body_includes, 'welcome', 'configured assert body marker surfaces on the export snapshot');
   assert.equal(api2.tls.warn_days_before, 14, 'configured tls warn-days threshold surfaces on the export snapshot');
   assert.equal(api2.tls.timeout_ms, 4000, 'configured tls cert-fetch timeout surfaces on the export snapshot');
   assert.deepEqual(out2.http.latencyThresholds, { api: 200 }, 'mirror block matches the per-target resolved map');
+  assert.deepEqual(out2.http.assertStatusCodes, { api: 201 }, 'assert status mirror block matches the per-target resolved map');
+  assert.deepEqual(out2.http.assertBodyIncludes, { api: 'welcome' }, 'assert body mirror block matches the per-target resolved map');
   assert.deepEqual(out2.tls.warnDaysBefore, { api: 14 }, 'mirror block matches the per-target resolved map');
   // the closed-over-target "other" row (no config entry) stays null
   const other2 = out2.targets.find((t) => t.target === 'other');
@@ -100,6 +106,9 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.deepEqual(out.http.latencyThresholds, {}, 'empty-config http threshold map defaults to {}');
   // per-target probe timeout map (web api parity): none configured -> {}
   assert.deepEqual(out.http.timeoutMs, {}, 'empty-config http timeout map defaults to {}');
+  // per-target assert criteria maps (web api parity): none configured -> {}
+  assert.deepEqual(out.http.assertStatusCodes, {}, 'empty-config http assert status map defaults to {}');
+  assert.deepEqual(out.http.assertBodyIncludes, {}, 'empty-config http assert body map defaults to {}');
   // per-target cert warn-days threshold map (web api parity): none configured -> {}
   assert.deepEqual(out.tls.warnDaysBefore, {}, 'empty-config tls warn-days map defaults to {}');
   // per-target cert-fetch timeout map (web api parity): none configured -> {}

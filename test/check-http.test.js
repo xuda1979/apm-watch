@@ -9,6 +9,8 @@ test('http checker: 200 with expected status passes', async (t) => {
   const res = await checkEndpoint({ url: srv.url + '/ok', assert: { statusCode: 200 } });
   assert.equal(res.status, 'ok');
   assert.equal(res.statusCode, 200);
+  assert.equal(res.expectedStatusCode, 200, 'the judged-against status rides the result');
+  assert.equal(res.bodyIncludes, null, 'unconfigured body assertion stays null');
   assert.equal(res.method, 'GET', 'default verb surfaces as GET');
   assert.ok(res.latencyMs >= 0);
 });
@@ -42,8 +44,10 @@ test('http checker: body substring assertion', async (t) => {
   t.after(srv.close);
   const hit = await checkEndpoint({ url: srv.url + '/a', assert: { bodyIncludes: 'brown fox' } });
   assert.equal(hit.status, 'ok');
+  assert.equal(hit.bodyIncludes, 'brown fox', 'the required body substring rides the result');
   const miss = await checkEndpoint({ url: srv.url + '/a', assert: { bodyIncludes: 'purple' } });
   assert.equal(miss.status, 'error');
+  assert.equal(miss.bodyIncludes, 'purple');
   assert.match(miss.detail, /missing/);
 });
 
@@ -62,6 +66,8 @@ test('http checker: default timeout surfaces on the result', async (t) => {
   t.after(srv.close);
   const res = await checkEndpoint({ url: srv.url + '/ok' });
   assert.equal(res.timeoutMs, 5000, 'unset timeoutMs resolves to the 5000 default');
+  assert.equal(res.expectedStatusCode, null, 'no assert configured -> judged status stays null');
+  assert.equal(res.bodyIncludes, null, 'no assert configured -> body marker stays null');
 });
 
 test('http checker: connection refused -> error', async () => {
@@ -93,5 +99,7 @@ test('http checker: latency warn does not mask hard errors', async (t) => {
   t.after(srv.close);
   const res = await checkEndpoint({ url: srv.url + '/missing', assert: { statusCode: 200 }, latencyThresholdMs: 1 });
   assert.equal(res.status, 'error', 'status assertion failure stays error');
+  assert.equal(res.expectedStatusCode, 200, 'the judged-against status rides even a failing result');
+  assert.equal(res.bodyIncludes, null, 'status-only assert leaves the body marker null');
   assert.match(res.detail, /expected status 200/);
 });

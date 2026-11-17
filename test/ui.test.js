@@ -27,7 +27,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('apm:svc/p95', 40, Date.now());
   store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
-  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, intervalSeconds: '30s' }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30, timeoutMs: 4000, intervalSeconds: 90 }], store: { retentionDays: 14 }, notifications: { repeatIntervalSeconds: 7200, webhook: { url: 'https://example.com/hook' }, email: { host: 'smtp.example.com' } }, scheduler: { httpIntervalSeconds: '45s', tlsIntervalSeconds: 120, apmIntervalSeconds: '2m' } });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, assert: { statusCode: 200, bodyIncludes: 'fixture' }, intervalSeconds: '30s' }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30, timeoutMs: 4000, intervalSeconds: 90 }], store: { retentionDays: 14 }, notifications: { repeatIntervalSeconds: 7200, webhook: { url: 'https://example.com/hook' }, email: { host: 'smtp.example.com' } }, scheduler: { httpIntervalSeconds: '45s', tlsIntervalSeconds: 120, apmIntervalSeconds: '2m' } });
   const port = await listen(server);
   t.after(() => new Promise((r) => server.close(r)));
 
@@ -111,6 +111,13 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiHttp.latency_threshold_ms, 200, 'configured per-http latency threshold surfaces on the web api row');
   assert.equal(apiHttp.timeout_ms, 3000, 'configured per-http abort timeout surfaces on the web api row');
   assert.equal(apiHttp.warn_days_before, null, 'http rows carry no tls warn-days threshold');
+  // the judged-against assert criteria ride the web api row on the same slot
+  // once --json uses (expected_status_code / body_includes parity): re-resolved
+  // from config because a stored snapshot can't recall the criteria it met
+  assert.equal(apiHttp.expected_status_code, 200, 'configured assert.statusCode reaches the web api row');
+  assert.equal(apiHttp.body_includes, 'fixture', 'configured assert.bodyIncludes reaches the web api row');
+  assert.equal(svcApm.expected_status_code, null, 'apm rows carry no http assert status code');
+  assert.equal(svcApm.body_includes, null, 'apm rows carry no http assert body marker');
   assert.equal(apiTls.error_rate_threshold, null, 'tls rows carry no apm error-rate threshold');
   assert.equal(apiTls.latency_threshold_ms, null, 'tls rows carry no latency threshold');
   assert.equal(apiTls.timeout_ms, 4000, 'configured cert-fetch socket timeout surfaces on the web api row');
@@ -136,6 +143,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.apm.collect, false, 'unconfigured apm collection surfaces as false on the web api');
   assert.deepEqual(data.http.latencyThresholds, { api: 200 }, 'per-target latency thresholds reach the web api');
   assert.deepEqual(data.http.timeoutMs, { api: 3000 }, 'per-target probe timeouts reach the web api');
+  assert.deepEqual(data.http.assertStatusCodes, { api: 200 }, 'per-target assert status codes reach the web api');
+  assert.deepEqual(data.http.assertBodyIncludes, { api: 'fixture' }, 'per-target assert body markers reach the web api');
   assert.deepEqual(data.tls.warnDaysBefore, { api: 30 }, 'per-target cert warn thresholds reach the web api');
   assert.deepEqual(data.http.intervalSeconds, { api: 30 }, "per-check http interval '30s' beats the scheduler-wide 45s and reaches the web api");
   assert.deepEqual(data.tls.intervalSeconds, { api: 90 }, 'per-check tls interval 90 beats the scheduler-wide 120 and reaches the web api');

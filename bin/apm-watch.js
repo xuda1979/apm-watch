@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals, uiHistorySeconds, notificationsDesktop, notificationsWebhookEnabled, notificationsEmailEnabled } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpAssertStatusCodes, httpAssertBodyIncludes, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals, uiHistorySeconds, notificationsDesktop, notificationsWebhookEnabled, notificationsEmailEnabled } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine, retentionDays } from '../lib/engine.js';
@@ -234,7 +234,7 @@ async function cmdOnce(args) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
       apm: { collect: config.apm?.collect === true, errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
-      http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), intervalSeconds: httpIntervalSeconds(config) },
+      http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), assertStatusCodes: httpAssertStatusCodes(config), assertBodyIncludes: httpAssertBodyIncludes(config), intervalSeconds: httpIntervalSeconds(config) },
       tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), intervalSeconds: tlsIntervalSeconds(config) },
       store: { retentionDays: retentionDays(config?.store) },
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
@@ -292,6 +292,12 @@ export function onceJsonRow(r) {
     latency_ms: r.latencyMs ?? null,
     method: r.method ?? null,                // http only
     status_code: r.statusCode ?? null,       // http only
+    // the judged-against assert criteria that drove any status/body failure,
+    // stamped on the engine results (check-http.js finalize, inc 63): the
+    // expected status code + required body substring, null when no `assert`
+    // block is configured
+    expected_status_code: r.expectedStatusCode ?? null, // http only
+    body_includes: r.bodyIncludes ?? null,               // http only
     // http: resolved per-target threshold; apm: the config-level threshold the
     // summary was judged against (latency_ms precedent — one field, both kinds)
     latency_threshold_ms: r.latencyThresholdMs ?? null,

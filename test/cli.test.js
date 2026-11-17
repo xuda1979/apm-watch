@@ -51,6 +51,8 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   });
   assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
   assert.equal(http.timeout_ms, 8000, 'configured abort timeout surfaces on http rows');
+  assert.equal(http.expected_status_code, null, 'unconfigured expected status stays null on http rows');
+  assert.equal(http.body_includes, null, 'unconfigured body marker stays null on http rows');
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
   assert.equal(http.p50_ms, null);
   assert.equal(http.p95_ms, null, 'apm-only p95 slot stays null on http rows');
@@ -192,6 +194,8 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');
   assert.deepEqual(doc.http.timeoutMs, {}, 'empty-config http timeout map stays {} on once --json');
   assert.deepEqual(doc.http.intervalSeconds, {}, 'empty-config http interval map stays {} on once --json');
+  assert.deepEqual(doc.http.assertStatusCodes, {}, 'empty-config http expected-status map stays {} on once --json');
+  assert.deepEqual(doc.http.assertBodyIncludes, {}, 'empty-config http body-marker map stays {} on once --json');
   assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
   assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
   assert.deepEqual(doc.tls.intervalSeconds, {}, 'empty-config tls interval map stays {} on once --json');
@@ -257,10 +261,16 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(slow.timeout_ms, 1234, 'configured per-http abort timeout surfaces on once --json rows');
   assert.equal(ok.timeout_ms, 5000, 'unconfigured http timeout defaults to 5000, not dropped');
   assert.equal(ok.error_rate_threshold, null, 'apm-only error-rate threshold is null on http rows');
+  assert.equal(ok.expected_status_code, 200, 'the configured expected status surfaces on once --json rows');
+  assert.equal(slow.expected_status_code, null, 'unconfigured expected status is null, not dropped');
+  assert.equal(ok.body_includes, null, 'unconfigured body marker is null, not dropped');
+  assert.equal(slow.body_includes, null, 'no body assert -> body marker stays null even on the row');
   // per-kind threshold/timeout/interval mirror maps (web + export parity): the
   // configured per-http map entries surface on the once --json envelope
   assert.deepEqual(doc.http.latencyThresholds, { 'slow-svc': 1 }, 'configured per-http latency threshold surfaces in the mirror map');
   assert.deepEqual(doc.http.timeoutMs, { 'ok-svc': 5000, 'slow-svc': 1234 }, 'per-http abort timeouts surface, resolved default and configured');
+  assert.deepEqual(doc.http.assertStatusCodes, { 'ok-svc': 200 }, 'configured expected status surfaces in the mirror map');
+  assert.deepEqual(doc.http.assertBodyIncludes, {}, 'unconfigured body markers keep an empty mirror map');
   assert.deepEqual(doc.http.intervalSeconds, { 'ok-svc': 60, 'slow-svc': 60 }, 'unconfigured per-http intervals resolve to the 60s default');
   assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
   assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
@@ -335,6 +345,8 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.deepEqual(doc.tls.intervalSeconds, { 'cert-soon': 300 }, 'unconfigured per-cert interval resolves to the 300s default');
   assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');
   assert.deepEqual(doc.http.timeoutMs, {}, 'empty-config http timeout map stays {} on once --json');
+  assert.deepEqual(doc.http.assertStatusCodes, {}, 'empty-config http assert status map stays {} on once --json');
+  assert.deepEqual(doc.http.assertBodyIncludes, {}, 'empty-config http assert body map stays {} on once --json');
   assert.deepEqual(doc.http.intervalSeconds, {}, 'empty-config http interval map stays {} on once --json');
 });
 
