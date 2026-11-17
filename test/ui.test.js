@@ -166,6 +166,8 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
   store.setClock(() => Date.now() - 60000);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', detail: 'HTTP 200' });
+  // failure target: its *why* (the http failure reason) must reach the row
+  store.saveState({ target: 'broken', kind: 'http', status: 'error', latencyMs: null, method: 'GET', detail: 'expected status 200, got 503' });
   // leaf-first multi-cert chain (the stored chain_json shape producers emit)
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [
     { subject: '/C=US/O=Acme/CN=fixture.test', issuer: '/CN=inter.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: false },
@@ -191,6 +193,10 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /apm-watch/);
   assert.match(out, /api/);
   assert.match(out, /http:GET ok:12ms 100%/); // single ok snapshot -> full-window uptime
+  // the http failure reason reaches the row (web detail-column parity): the
+  // tls/apm rows carry their detail, the http row must too. The error snapshot
+  // owns the whole backdated window -> 0% uptime, rendered before the detail.
+  assert.match(out, /http:GET error:— 0% \(expected status 200, got 503\)/);
   assert.match(out, /cert:expires in 12d/);
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
