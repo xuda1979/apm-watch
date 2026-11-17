@@ -165,6 +165,21 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   assert.equal(states.find((s) => s.target === 'slow').status, 'warn');
   assert.equal(states.find((s) => s.target === 'fast').status, 'ok');
   assert.ok(!alerts.some((a) => a.target === 'fast'), 'fast service must not alert');
+
+  // error-rate-driven warn: rate above threshold with fine latency must be
+  // labelled as *why* on the detail, mirroring the (slow p95) latency marker
+  // (every human surface renders this detail verbatim)
+  for (let i = 0; i < 10; i++) {
+    engine.collector.add('errful', 5, true, now + i);
+  }
+  const { results: errResults } = await engine.runApmCheck();
+  const errRes = errResults.find((r) => r.target === 'errful');
+  assert.equal(errRes.status, 'warn');
+  assert.equal(errRes.errorRate, 1, '10/10 error samples');
+  assert.equal(errRes.errorRateThreshold, 0.5);
+  assert.match(errRes.detail, /\(err rate 100% >= 50%\)/, 'rate cause surfaces on the detail like (slow p95) does for latency');
+  assert.doesNotMatch(errRes.detail, /slow p95/, 'a rate-only warn must not claim a latency cause');
+  assert.equal(errRes.latencyMs, 5, 'fast p95 keeps the row numerically healthy');
 });
 
 test('engine: collector window and maxSamples are wired from config', async () => {
