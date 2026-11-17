@@ -196,6 +196,12 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.ok(Number.isFinite(doc.health.uptimeSince), 'monitor uptime-since timestamp surfaces');
   assert.ok(Number.isFinite(doc.health.lastCheckAt), 'monitor last-check timestamp surfaces');
   assert.ok(doc.health.lastCheckAt >= doc.health.uptimeSince, 'last check is at/after monitor start');
+  // the recent-events list rides the envelope like the web /api/events +
+  // export page surfaces (ts/level/source/message shape): a fresh once run
+  // records no alert-path events, so the key is present and empty rather
+  // than dropped (web + export parity for the cron/CI document)
+  assert.ok(Array.isArray(doc.events), 'once --json surfaces the events list key');
+  assert.equal(doc.events.length, 0, 'a fresh once run records no alert events');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
@@ -330,6 +336,14 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
     tls: [{ name: 'broken-cert', pemFile: path.join(dir, 'missing.pem'), warnDaysBefore: 30, timeoutMs: 1500 }],
     store: { path: path.join(dir, 'tls-fail.db') },
   }));
+  // Seed a persisted event (as a run/export alert cycle would write) so the
+  // once --json events key proves it surfaces stored history, not just the
+  // empty fresh-run shape.
+  const { Store } = await import('../lib/store.js');
+  const seeded = new Store(path.join(dir, 'tls-fail.db'));
+  seeded.addEvent('warn', 'tls', 'cert-soon: expires in 15d');
+  seeded.addEvent('info', 'tls', 'cert-soon: recovered');
+  seeded.close();
   const { code, stdout, stderr } = await runOnceJson(cfg);
   assert.equal(code, 2, `failed tls -> exit 2\nstderr:\n${stderr}`);
   const doc = JSON.parse(stdout);
@@ -352,6 +366,16 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   assert.equal(doc.health.status, 'error', 'health block records the worst check status');
   assert.ok(Number.isFinite(doc.health.uptimeSince), 'health uptime-since still surfaces on failure');
   assert.ok(Number.isFinite(doc.health.lastCheckAt), 'health last-check still surfaces on failure');
+  // seeded store events surface on the cron/CI document (web /api/events +
+  // export page parity): newest first, full ts/level/source/message shape
+  assert.ok(Array.isArray(doc.events), 'once --json carries the events list key');
+  assert.equal(doc.events.length, 2, 'both seeded events surface on once --json');
+  assert.equal(doc.events[0].level, 'info', 'newest event sorts first (store.recentEvents order)');
+  assert.equal(doc.events[0].source, 'tls');
+  assert.equal(doc.events[0].message, 'cert-soon: recovered');
+  assert.equal(doc.events[1].level, 'warn');
+  assert.equal(doc.events[1].message, 'cert-soon: expires in 15d');
+  assert.ok(Number.isFinite(doc.events[0].ts), 'each event carries its ts, matching the web api shape');
 });
 
 test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {

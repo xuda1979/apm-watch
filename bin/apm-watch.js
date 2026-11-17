@@ -209,6 +209,12 @@ async function cmdOnce(args) {
   const health = h?.lastCheckAt
     ? { status: h.status || 'unknown', uptimeSince: h.uptimeSince ?? null, lastCheckAt: h.lastCheckAt ?? null }
     : null;
+  // The recent-events list mirrors the web /api/events + export page surfaces
+  // (ts/level/source/message shape, newest first — store.recentEvents order).
+  // A `once` run itself records no events (checks run without the alert path),
+  // so a fresh run yields [] until a run/export alert cycle wrote some to the
+  // store; the cron/CI document still carries the key so consumers see history.
+  const events = store.recentEvents(50).map((e) => ({ ts: e.ts, level: e.level, source: e.source, message: e.message }));
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
@@ -220,6 +226,7 @@ async function cmdOnce(args) {
       scheduler: schedulerIntervals(config),
       ui: { historySeconds: uiHistorySeconds(config) },
       health,
+      events,
       results: results.map(onceJsonRow),
     }, null, 2));
     return;
