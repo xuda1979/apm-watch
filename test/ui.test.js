@@ -87,6 +87,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiHttp.days_remaining, null);
   assert.equal(svcApm.status, 'ok');
   assert.equal(svcApm.p50_ms, null);                // apm row: seeded without numerics -> null
+  assert.equal(svcApm.p95_ms, null, 'unseeded p95 surfaces as null on the web api too');
   assert.equal(svcApm.error_rate, null);
   assert.equal(svcApm.errors, null);
   assert.equal(svcApm.samples, null);

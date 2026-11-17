@@ -126,6 +126,7 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   // compare error_rate/samples without parsing the detail string
   const slowRes = results.find((r) => r.target === 'slow');
   assert.equal(slowRes.p50Ms, summary.slow.p50);
+  assert.equal(slowRes.p95Ms, summary.slow.p95, 'p95 stamps its own labelled field alongside latency_ms');
   assert.equal(slowRes.errorRate, 0.1, '1 error / 10 samples');
   assert.equal(slowRes.errors, 1);
   assert.equal(slowRes.samples, 10);
@@ -145,6 +146,7 @@ test('engine: apm slow p95 latency flips status to warn below error threshold', 
   // the same numeric fields persist into the states rows for export/web surfaces
   const slowState = store.latestStates().find((s) => s.target === 'slow');
   assert.equal(slowState.p50_ms, summary.slow.p50);
+  assert.equal(slowState.p95_ms, summary.slow.p95, 'p95_ms persists as its own state column');
   assert.equal(slowState.error_rate, 0.1);
   assert.equal(slowState.errors, 1);
   assert.equal(slowState.samples, 10);

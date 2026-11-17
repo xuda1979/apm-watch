@@ -29,11 +29,12 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   // a stamped apm result (runApmCheck, inc 33) carries both judged thresholds
   const apm = onceJsonRow({
     target: 'pay', kind: 'apm', status: 'warn', ts: 123,
-    latencyMs: 900, p50Ms: 700, errorRate: 0.13, errors: 13, samples: 100,
+    latencyMs: 900, p50Ms: 700, p95Ms: 900, errorRate: 0.13, errors: 13, samples: 100,
     errorRateThreshold: 0.12, latencyThresholdMs: 800,
     detail: 'p50=700ms p95=900ms errors=13/100 (slow p95)',
   });
   assert.equal(apm.kind, 'apm');
+  assert.equal(apm.p95_ms, 900, 'p95 ms rides its own labelled row field');
   assert.equal(apm.error_rate_threshold, 0.12, 'configured apm error-rate threshold surfaces');
   assert.equal(apm.latency_threshold_ms, 800, 'apm latency threshold rides the shared http/apm field');
   assert.equal(apm.error_rate, 0.13);
@@ -49,6 +50,7 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(http.timeout_ms, 8000, 'configured abort timeout surfaces on http rows');
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
   assert.equal(http.p50_ms, null);
+  assert.equal(http.p95_ms, null, 'apm-only p95 slot stays null on http rows');
 
   // tls rows carry neither apm threshold nor http verb, but stamp the
   // cert-fetch socket timeout like http rows stamp the probe abort timeout

@@ -84,7 +84,7 @@ test('store: saveState persists numeric per-kind fields and round-trips them', (
   now += 500;
   s.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: 999, daysRemaining: 12, selfSigned: true }], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
   now += 500;
-  s.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 320, p50Ms: 200, errorRate: 0.1, errors: 1, samples: 10, detail: 'slow' });
+  s.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 320, p50Ms: 200, p95Ms: 320, errorRate: 0.1, errors: 1, samples: 10, detail: 'slow' });
   const latest = s.latestStates();
   const http = latest.find((r) => r.kind === 'http');
   const tls = latest.find((r) => r.kind === 'tls');
@@ -100,6 +100,7 @@ test('store: saveState persists numeric per-kind fields and round-trips them', (
     { subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: 999, daysRemaining: 12, selfSigned: true },
   ]);
   assert.equal(apm.p50_ms, 200);
+  assert.equal(apm.p95_ms, 320, 'p95 ms round-trips through the store like p50');
   assert.equal(apm.error_rate, 0.1);
   assert.equal(apm.errors, 1);
   assert.equal(apm.samples, 10);
@@ -133,7 +134,7 @@ test('store: states migration adds numeric columns to an old-schema database', (
     // existing history and adding every numeric column used by the surfaces.
     const s = new Store(dbPath);
     const cols = new Set(s.db.prepare('PRAGMA table_info(states)').all().map((c) => c.name));
-    for (const name of ['method', 'status_code', 'days_remaining', 'chain_json', 'valid_chain', 'leaf_subject', 'p50_ms', 'error_rate', 'errors', 'samples']) {
+    for (const name of ['method', 'status_code', 'days_remaining', 'chain_json', 'valid_chain', 'leaf_subject', 'p50_ms', 'p95_ms', 'error_rate', 'errors', 'samples']) {
       assert.ok(cols.has(name), `migration must add column ${name}`);
     }
     // pre-existing rows are untouched by the migration and get NULL numerics

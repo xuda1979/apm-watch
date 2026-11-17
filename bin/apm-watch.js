@@ -256,6 +256,7 @@ export function onceJsonRow(r) {
     valid_chain: r.validChain ?? null,       // tls only
     leaf_subject: r.leafSubject ?? null,     // tls only
     p50_ms: r.p50Ms ?? null,                 // apm only
+    p95_ms: r.p95Ms ?? null,                 // apm only
     error_rate: r.errorRate ?? null,         // apm only
     errors: r.errors ?? null,                // apm only
     samples: r.samples ?? null,              // apm only
