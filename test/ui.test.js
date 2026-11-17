@@ -97,6 +97,14 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(svcApm.error_rate, null);
   assert.equal(svcApm.errors, null);
   assert.equal(svcApm.samples, null);
+  // the apm warn criteria ride the row like once --json (engine stamps the
+  // judged-against thresholds onto each runApmCheck result): resolved from the
+  // same config-global defaults, null off-kind
+  assert.equal(svcApm.error_rate_threshold, 0.05, 'unconfigured apm error-rate threshold resolves to the 0.05 default on the web api row');
+  assert.equal(svcApm.latency_threshold_ms, 500, 'configured apm slow-latency threshold reaches the web api row');
+  assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
+  assert.equal(apiHttp.latency_threshold_ms, null, 'http rows carry no apm latency threshold');
+  assert.equal(apiTls.error_rate_threshold, null, 'tls rows carry no apm error-rate threshold');
 
   // history curves present, keyed per target (so the browser can draw one
   // line per endpoint), points in seconds ts space

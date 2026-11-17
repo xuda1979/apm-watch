@@ -37,6 +37,11 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.apm.error_rate, 0.1);
   assert.equal(api.apm.errors, 1);
   assert.equal(api.apm.samples, 10);
+  // the apm warn criteria ride the row like once --json (the engine stamps the
+  // judged-against thresholds onto each runApmCheck result): re-resolved from
+  // the same config-global defaults the apm mirror block carries
+  assert.equal(api.apm.error_rate_threshold, 0.05, 'unconfigured apm error-rate threshold resolves to the 0.05 default on the export snapshot');
+  assert.equal(api.apm.latency_threshold_ms, null, 'unconfigured apm slow-latency threshold is null, not dropped, on the export snapshot');
   const other = out.targets.find((t) => t.target === 'other');
   assert.equal(other.http.status_code, 503);
   // a target without the kind keeps null numerics, not undefined (stable JSON)
