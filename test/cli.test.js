@@ -173,6 +173,14 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.equal(doc.scheduler.apmIntervalSeconds, 90, 'configured apm scheduler interval surfaces in once --json');
   assert.equal(doc.scheduler.httpIntervalSeconds, 60, 'unconfigured http scheduler interval defaults to 60s');
   assert.equal(doc.scheduler.tlsIntervalSeconds, 300, 'unconfigured tls scheduler interval defaults to 300s');
+  // per-kind threshold/timeout/interval mirror maps (web + export parity): with
+  // no http/tls entries configured the maps are {}, not dropped from the envelope
+  assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');
+  assert.deepEqual(doc.http.timeoutMs, {}, 'empty-config http timeout map stays {} on once --json');
+  assert.deepEqual(doc.http.intervalSeconds, {}, 'empty-config http interval map stays {} on once --json');
+  assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
+  assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
+  assert.deepEqual(doc.tls.intervalSeconds, {}, 'empty-config tls interval map stays {} on once --json');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
@@ -209,6 +217,14 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(slow.timeout_ms, 1234, 'configured per-http abort timeout surfaces on once --json rows');
   assert.equal(ok.timeout_ms, 5000, 'unconfigured http timeout defaults to 5000, not dropped');
   assert.equal(ok.error_rate_threshold, null, 'apm-only error-rate threshold is null on http rows');
+  // per-kind threshold/timeout/interval mirror maps (web + export parity): the
+  // configured per-http map entries surface on the once --json envelope
+  assert.deepEqual(doc.http.latencyThresholds, { 'slow-svc': 1 }, 'configured per-http latency threshold surfaces in the mirror map');
+  assert.deepEqual(doc.http.timeoutMs, { 'ok-svc': 5000, 'slow-svc': 1234 }, 'per-http abort timeouts surface, resolved default and configured');
+  assert.deepEqual(doc.http.intervalSeconds, { 'ok-svc': 60, 'slow-svc': 60 }, 'unconfigured per-http intervals resolve to the 60s default');
+  assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
+  assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
+  assert.deepEqual(doc.tls.intervalSeconds, {}, 'empty-config tls interval map stays {} on once --json');
   // stdout is a pure JSON document — engine status lines go to stderr, never
   // mixed into the machine-readable output
   assert.ok(stderr.includes('http ok'), 'engine log lands on stderr');
@@ -262,6 +278,14 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.warn_days_before, 30);
   // the cert-fetch socket timeout that would have aborted the fetch (web/export parity)
   assert.equal(tls.timeout_ms, 1500);
+  // per-kind threshold/timeout/interval mirror maps (web + export parity): the
+  // configured per-cert warn-days and socket timeout surface on the envelope
+  assert.deepEqual(doc.tls.warnDaysBefore, { 'cert-soon': 30 }, 'configured per-cert warn-days surface in the mirror map');
+  assert.deepEqual(doc.tls.timeoutMs, { 'cert-soon': 1500 }, 'configured per-cert fetch timeout surfaces in the mirror map');
+  assert.deepEqual(doc.tls.intervalSeconds, { 'cert-soon': 300 }, 'unconfigured per-cert interval resolves to the 300s default');
+  assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');
+  assert.deepEqual(doc.http.timeoutMs, {}, 'empty-config http timeout map stays {} on once --json');
+  assert.deepEqual(doc.http.intervalSeconds, {}, 'empty-config http interval map stays {} on once --json');
 });
 
 test('cli: once human output surfaces tls chain metadata (leaf subject)', async (t) => {

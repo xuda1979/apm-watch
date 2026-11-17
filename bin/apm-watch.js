@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, httpLatencyThresholds, tlsWarnDaysBefore, schedulerIntervals } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine, retentionDays } from '../lib/engine.js';
@@ -205,6 +205,8 @@ async function cmdOnce(args) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
       apm: { collect: config.apm?.collect === true, errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
+      http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), intervalSeconds: httpIntervalSeconds(config) },
+      tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), intervalSeconds: tlsIntervalSeconds(config) },
       store: { retentionDays: retentionDays(config?.store) },
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600 },
       scheduler: schedulerIntervals(config),
