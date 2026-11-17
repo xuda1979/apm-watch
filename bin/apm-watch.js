@@ -169,6 +169,12 @@ async function cmdRun(args) {
       // cadence is config-global, resolved from the same scheduler mapping the
       // mirror blocks carry.
       apmIntervalSeconds: schedulerIntervals(config).apmIntervalSeconds,
+      // the apm sampling window rides the TUI rows like every other face (web
+      // /api/states rows + export JSON blocks + once rows parity, inc 77): the
+      // window is config-global, resolved from the same apm config the mirror
+      // blocks carry — states rows have no window column, so the TUI must
+      // re-resolve from config.
+      apmWindowMs: config.apm?.windowMs ?? 60_000,
       onExit: shutdown,
     });
     tui.start();
@@ -339,8 +345,12 @@ async function cmdOnce(args) {
     // engine stamps errorRate on every apm result and the detail renders only
     // the errors=N/M fraction, so the labeled percentage gives the terminal
     // row the same at-a-glance rate the TUI apm-history err line carries.
+    // The sampling window rides as ` window 1m` (inc 77 parity): stamped onto
+    // every apm result by runApmCheck (windowMs, the collector's configured
+    // sampling window), so the human row says how long a window each summary
+    // was collected over — compact formatted like the every-cadence anno above.
     const apmAnno = r.kind === 'apm'
-      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}${r.errorRate != null ? ` err ${(r.errorRate * 100).toFixed(1)}%` : ''}`
+      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}${r.errorRate != null ? ` err ${(r.errorRate * 100).toFixed(1)}%` : ''}${r.windowMs != null ? ` window ${fmtInterval(r.windowMs / 1000)}` : ''}`
       : '';
     // the per-check run cadence rides the human row like the tui/web/export rows
     // (inc 71 parity): stamped onto each result in cmdOnce (intervalSeconds,
@@ -455,6 +465,7 @@ export function onceJsonRow(r) {
     errors: r.errors ?? null,                // apm only
     samples: r.samples ?? null,              // apm only
     error_rate_threshold: r.errorRateThreshold ?? null, // apm only (stamped by runApmCheck, inc 33)
+    window_ms: r.windowMs ?? null, // apm only (stamped by runApmCheck, inc 77 — the sampling window the summary was collected over)
     uptime_pct: r.uptimePct ?? null, // http only (computed in cmdOnce, inc 58)
     uptime_ms: r.uptimeMs ?? null,   // http only (breakdown, export.js:43 gates)
     detail: r.detail,

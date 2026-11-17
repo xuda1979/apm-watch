@@ -139,6 +139,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(svcApm.timeout_ms, null, 'apm rows carry no per-check abort timeout');
   assert.equal(svcApm.warn_days_before, null, 'apm rows carry no tls warn-days threshold');
   assert.equal(svcApm.interval_seconds, 120, "configured apm collection cadence '2m' surfaces on the web api row");
+  // the sampling window the apm summary was collected over rides the row like
+  // the cadence above (inc 77 parity): re-resolved from config because a stored
+  // snapshot can't recall the window it aggregated (no store column), null
+  // off-kind
+  assert.equal(svcApm.window_ms, 90_000, 'configured collector window surfaces on the web api row');
   assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
   // the per-row judged-against threshold / abort timeout fields ride the web
   // api rows on the same shared slot once --json uses (latency_threshold_ms:
@@ -159,6 +164,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiTls.timeout_ms, 4000, 'configured cert-fetch socket timeout surfaces on the web api row');
   assert.equal(apiTls.warn_days_before, 30, 'configured cert warn-days threshold surfaces on the web api row');
   assert.equal(apiTls.interval_seconds, 90, 'configured per-tls run cadence 90 surfaces on the web api row');
+  assert.equal(apiHttp.window_ms, null, 'http rows carry no apm collector window');
 
   // history curves present, keyed per target (so the browser can draw one
   // line per endpoint), points in seconds ts space
@@ -430,7 +436,7 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   }
   t.after(() => store.close());
 
-  const tui = new Tui({ store, intervalMs: 1000, apmLatencyThresholdMs: 250, apmErrorRateThreshold: 0.05 });
+  const tui = new Tui({ store, intervalMs: 1000, apmLatencyThresholdMs: 250, apmErrorRateThreshold: 0.05, apmWindowMs: 120_000 });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -445,8 +451,8 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   // errThr/slow-thr format (inc 68 parity): every apm row carries the resolved
   // 5.0% error-rate threshold from the constructor plus the configured 250ms
   // latency threshold, appended after the engine detail line
-  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms err 10\.0%/, 'warn live apm row annotates the judged-against thresholds and the measured error rate');
-  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms/, 'bare live apm row annotates the judged-against thresholds (unseeded error rate stays bare)');
+  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms err 10\.0% window 2m/, 'warn live apm row annotates the judged-against thresholds, the measured error rate and the sampling window');
+  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms window 2m/, 'bare live apm row annotates the judged-against thresholds and the sampling window (unseeded error rate stays bare)');
 });
 
 test('ui: tui apm rows stay bare when no apm thresholds are configured', async (t) => {
