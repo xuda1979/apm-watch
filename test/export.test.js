@@ -104,7 +104,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // the per-probe slow-latency threshold rides the http row too (inc 73 parity):
   // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
   // after the resolved cadence, exactly like the JSON http block carries it
-  assert.match(html2, /HTTP 200 · POST 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 3000ms · every 1m · thr 200ms/, 'configured slow-latency threshold annotates the export page http row');
+  assert.match(html2, /HTTP 200 · POST 200 · 100% uptime \(down 0s\) exp 201 body &quot;welcome&quot; · timeout 3000ms · every 1m · thr 200ms/, 'configured slow-latency threshold annotates the export page http row');
   // the judged-against cert warn-days threshold rides the tls row too (inc 74
   // parity): api carries warnDaysBefore 14 in cfg2, so the detail appends
   // ` · warn 14d` after the resolved cadence, exactly like the JSON tls block
@@ -211,20 +211,20 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   // uptime pct rendered in the http row detail, after the verb + response code
   // (web table row parity: export JSON carries method/status_code, the page
   // renderer used to drop them, the row now shows `HTTP 200 · GET 200 · 100%`)
-  assert.match(html, /HTTP 200 · GET 200 · 100% uptime/);
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime \(down 0s\)/);
   // judged-against http assert criteria render on the row detail after uptime
   // (web table + TUI + once parity, inc-65): the detail is escaped as a whole,
   // so the body marker's quotes render as &quot;
-  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot;/, 'assert criteria annotate the export page http row');
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime \(down 0s\) exp 201 body &quot;welcome&quot;/, 'assert criteria annotate the export page http row');
   // the resolved probe abort timeout rides the row too (inc-67 parity): api has
   // no timeoutMs in the config so the per-target map resolves the 5000 default,
   // exactly like the web/export JSON `timeout_ms` value the block carries
-  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 5000ms/, 'resolved abort timeout annotates the export page http row');
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime \(down 0s\) exp 201 body &quot;welcome&quot; · timeout 5000ms/, 'resolved abort timeout annotates the export page http row');
   // the resolved per-check run cadence rides the row too (inc-71 parity): api
   // sets no intervalSeconds so the per-target map resolves the 60s http default,
   // formatted compact like the web/TUI/once human faces (` · every 1m` — 60s
   // renders as 1m under the shared fmtInterval short-form)
-  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 5000ms · every 1m/, 'resolved run cadence annotates the export page http row');
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime \(down 0s\) exp 201 body &quot;welcome&quot; · timeout 5000ms · every 1m/, 'resolved run cadence annotates the export page http row');
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);

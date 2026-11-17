@@ -329,7 +329,9 @@ async function cmdOnce(args) {
       : '';
     // availability rides the human http row like the export html / TUI uptime
     // suffix (inc 58 parity): ` · N% uptime`, gated on a computed pct
-    const uptime = r.kind === 'http' && r.uptimePct != null ? ` · ${r.uptimePct}% uptime` : '';
+    const uptime = r.kind === 'http' && r.uptimePct != null
+      ? ` · ${r.uptimePct}% uptime${r.uptimeMs != null ? ` (down ${fmtInterval(r.uptimeMs.down_ms / 1000)})` : ''}`
+      : '';
     // judged-against http assert criteria ride the row like the tui row / web
     // table (inc 65 parity, inc 64 ` exp N` / ` body "s"` format): stamped onto
     // each engine result by check-http.js finalize (expectedStatusCode/

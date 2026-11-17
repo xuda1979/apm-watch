@@ -149,6 +149,10 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   // pillbox / export pills / TUI header (inc 79 parity): the single all-ok
   // result prints `ok 1 warn 0 err 0`
   assert.match(stdout, /ok 1 warn 0 err 0/, `snapshot status-count summary surfaces on the human report\nstdout:\n${stdout}`);
+  // the down-time window rides the uptime suffix like the tui/web/export rows
+  // (inc 80 parity): the live ok snapshot owns the whole history window, so the
+  // breakdown renders ` (down 0s)` after the pct
+  assert.match(stdout, /· 100% uptime \(down 0s\)/, `down-time window surfaces on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {

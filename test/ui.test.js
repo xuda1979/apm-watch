@@ -314,14 +314,14 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // owns the whole backdated window -> 0% uptime, rendered before the detail.
   // The numeric response code rides the row like the web/export `· GET 200`
   // detail cells (inc-48 parity).
-  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\)/);
+  assert.match(out, /http:GET 503 error:— 0% \(down 1m\) \(expected status 200, got 503\)/);
   // the judged-against assert criteria reach the same row (inc-64 web/once/export
   // parity): `exp 200` + `body "welcome"` after the detail, bare elsewhere
-  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome"/);
+  assert.match(out, /http:GET 503 error:— 0% \(down 1m\) \(expected status 200, got 503\) exp 200 body "welcome"/);
   // the resolved http abort timeout rides the same row (inc-67 parity): the
   // broken row carries `timeout 1234ms`, the api tls row carries `timeout 5000ms`,
   // and unconfigured targets stay bare
-  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms every 55s thr 400ms/);
+  assert.match(out, /http:GET 503 error:— 0% \(down 1m\) \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms every 55s thr 400ms/);
   assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m warn 30d/);
   assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m warn 30d port 443/);
   assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
