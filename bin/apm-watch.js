@@ -201,6 +201,14 @@ async function cmdOnce(args) {
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
   // 0 = all ok, 1 = any warn, 2 = any error. Matching Nagios conventions.
   process.exitCode = worstStatus(results);
+  // Monitor self-health: the engine persists this meta on every check path it
+  // ran above — web /api/states and export mirror this exact block, so the
+  // cron/CI document carries the same "up since / last check" snapshot.
+  // Null when no check ran (fresh store or empty config).
+  const h = store.getMeta?.('health')?.value;
+  const health = h?.lastCheckAt
+    ? { status: h.status || 'unknown', uptimeSince: h.uptimeSince ?? null, lastCheckAt: h.lastCheckAt ?? null }
+    : null;
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
@@ -211,6 +219,7 @@ async function cmdOnce(args) {
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
       scheduler: schedulerIntervals(config),
       ui: { historySeconds: uiHistorySeconds(config) },
+      health,
       results: results.map(onceJsonRow),
     }, null, 2));
     return;

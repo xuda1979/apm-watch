@@ -188,6 +188,14 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
   assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
   assert.deepEqual(doc.tls.intervalSeconds, {}, 'empty-config tls interval map stays {} on once --json');
+  // monitor self-health: the apm run above persisted it, so the once --json
+  // envelope surfaces the same block the web /api/states + export emit (web +
+  // export parity for the cron/CI document)
+  assert.ok(doc.health, 'once --json surfaces the engine-persisted monitor health block');
+  assert.equal(doc.health.status, 'ok', 'an all-ok run records ok monitor status');
+  assert.ok(Number.isFinite(doc.health.uptimeSince), 'monitor uptime-since timestamp surfaces');
+  assert.ok(Number.isFinite(doc.health.lastCheckAt), 'monitor last-check timestamp surfaces');
+  assert.ok(doc.health.lastCheckAt >= doc.health.uptimeSince, 'last check is at/after monitor start');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
@@ -337,6 +345,13 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   assert.equal(tls.warn_days_before, 30);
   // the cert-fetch socket timeout stamps the failed row too, like warnDaysBefore
   assert.equal(tls.timeout_ms, 1500);
+  // monitor self-health reflects the failure path (web/export parity on the
+  // cron/CI document): the error check recorded a hard state, so the block
+  // carries error status rather than the all-ok default
+  assert.ok(doc.health, 'once --json surfaces monitor health even when a check errors');
+  assert.equal(doc.health.status, 'error', 'health block records the worst check status');
+  assert.ok(Number.isFinite(doc.health.uptimeSince), 'health uptime-since still surfaces on failure');
+  assert.ok(Number.isFinite(doc.health.lastCheckAt), 'health last-check still surfaces on failure');
 });
 
 test('cli: once exits 2 when a check errors (asserted status mismatch)', async (t) => {
