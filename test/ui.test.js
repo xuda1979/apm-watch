@@ -165,7 +165,11 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // backdate states so the availability window is nonzero (same-ms saves -> 0ms -> pct null)
   store.setClock(() => Date.now() - 60000);
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', detail: 'HTTP 200' });
-  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [], validChain: false, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
+  // leaf-first multi-cert chain (the stored chain_json shape producers emit)
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [
+    { subject: '/C=US/O=Acme/CN=fixture.test', issuer: '/CN=inter.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: false },
+    { subject: '/CN=inter.test', issuer: '/CN=root.test', notAfter: '2035-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 100, selfSigned: false },
+  ], validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
   store.saveMetric('http:api/latency', 10, Date.now() - 2000);
   store.saveMetric('http:api/latency', 20, Date.now());
   store.saveMetric('http:api/status', 200, Date.now() - 2000);
@@ -189,8 +193,11 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   assert.match(out, /cert:expires in 12d/);
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
-  // chain-validity parity with the web table: broken chains are flagged in the row
-  assert.match(out, /\(chain broken\)/);
+  // per-cert chain path surfaces in the row, leaf-first (web/export tooltip
+  // parity): subjects use the compact last-DN-component form
+  assert.match(out, /chain: CN=fixture\.test -> CN=inter\.test/);
+  // ...but no broken-chain marker on a valid chain
+  assert.doesNotMatch(out, /\(chain broken\)/);
   // sparkline glyph block for latency history
   assert.match(out, /▁|▂|▃|▄|▅|▆|▇|█/);
   // status-code history section renders per http target
@@ -252,6 +259,9 @@ test('ui: tui tls-history rows annotate the per-target cert warn threshold (web 
   // the configured cert warn-days threshold is annotated on its target's row, others stay bare
   assert.match(out, /api: .*warn 30d/);
   assert.doesNotMatch(out, /anon: .*warn \d+d/);
+  // chain-validity parity with the web table: a broken (non-valid) chain is
+  // flagged in the row even when it carries no per-cert chain path
+  assert.match(out, /api\s+.*\(chain broken\)/);
 });
 
 test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (t) => {
