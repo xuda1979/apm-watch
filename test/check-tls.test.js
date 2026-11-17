@@ -43,6 +43,19 @@ test('tls: chain order verified across intermediate + root', async (t) => {
     const badPem = readFileSync(p('int', '.crt'), 'utf8') + readFileSync(p('leaf', '.crt'), 'utf8') + readFileSync(p('root', '.crt'), 'utf8');
     const bad = inspectPemChain(badPem);
     assert.equal(bad.validChain, false, 'mismatched order should fail linkage');
+
+    // the network path applies the same linkage gate + leaf subject (inc 69):
+    // wrap the openssl PEMs as X509Certificates and feed the same orders through
+    // netChainToReport, mirroring what a live socket fetch would deliver
+    const { X509Certificate } = await import('node:crypto');
+    const leafCrt = readFileSync(p('leaf', '.crt'), 'utf8');
+    const intCrt = readFileSync(p('int', '.crt'), 'utf8');
+    const rootCrt = readFileSync(p('root', '.crt'), 'utf8');
+    const netOk = netChainToReport({ host: 'leaf.example', port: 443, certs: [leafCrt, intCrt, rootCrt].map((s) => new X509Certificate(s)) });
+    assert.equal(netOk.validChain, true, 'ordered leaf/int/root passes linkage on the network path');
+    assert.equal(netOk.leafSubject, 'CN=leaf.example', 'leaf subject rides the leaf-first network report');
+    const netBad = netChainToReport({ host: 'leaf.example', port: 443, certs: [intCrt, leafCrt, rootCrt].map((s) => new X509Certificate(s)) });
+    assert.equal(netBad.validChain, false, 'mismatched order fails linkage on the network path too');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -70,4 +83,9 @@ test('tls: fetchCertChain against real TLS server gives chain', async (t) => {
   assert.ok(rep.daysRemaining > 0 && rep.daysRemaining <= 40);
   // network chain entries carry the same per-cert fields as inspectPemChain
   assert.ok(rep.chain[0].validFrom, 'chain entries include validFrom (field parity)');
+  // network path carries the same chain-validity + leaf-subject semantics as
+  // the pem path (inc 69): a single self-signed leaf is a valid chain, and the
+  // leaf subject rides the report like inspectPemChain returns it
+  assert.equal(rep.validChain, true, 'single self-signed leaf is a valid chain on the network path');
+  assert.equal(rep.leafSubject, 'CN=fixture.test', 'leaf subject rides the network report like the pem path');
 });
