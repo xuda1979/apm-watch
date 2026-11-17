@@ -174,6 +174,10 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   // (web table + TUI + once parity, inc-65): the detail is escaped as a whole,
   // so the body marker's quotes render as &quot;
   assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot;/, 'assert criteria annotate the export page http row');
+  // the resolved probe abort timeout rides the row too (inc-67 parity): api has
+  // no timeoutMs in the config so the per-target map resolves the 5000 default,
+  // exactly like the web/export JSON `timeout_ms` value the block carries
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 5000ms/, 'resolved abort timeout annotates the export page http row');
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);

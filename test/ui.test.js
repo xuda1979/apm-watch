@@ -238,7 +238,11 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // judged-against http assert criteria ride the row when configured (inc-64:
   // once --json / web rows / export JSON parity): configure both maps for the
   // broken target and expect `exp 200` + `body "welcome"` after its detail.
-  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' } });
+  // the resolved per-target abort timeouts ride the rows too (inc-67 parity):
+  // threaded through the same config maps the web /api/states rows + export
+  // JSON blocks carry — http 1234ms resolves on the broken row, tls 5000ms on
+  // the api row (no `states` timeout column, so the TUI re-resolves from config)
+  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 } });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -259,6 +263,11 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the judged-against assert criteria reach the same row (inc-64 web/once/export
   // parity): `exp 200` + `body "welcome"` after the detail, bare elsewhere
   assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome"/);
+  // the resolved http abort timeout rides the same row (inc-67 parity): the
+  // broken row carries `timeout 1234ms`, the api tls row carries `timeout 5000ms`,
+  // and unconfigured targets stay bare
+  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms/);
+  assert.match(out, /cert:expires in 12d .* timeout 5000ms/);
   assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
   assert.match(out, /cert:expires in 12d/);
   // leaf cert subject surfaces next to the tls detail

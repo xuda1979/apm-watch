@@ -145,6 +145,13 @@ async function cmdRun(args) {
       // the same canonical maps the web mirror blocks carry.
       httpAssertStatusCodes: httpAssertStatusCodes(config),
       httpAssertBodyIncludes: httpAssertBodyIncludes(config),
+      // the per-check abort timeouts (http probe + tls cert-fetch socket) ride the
+      // TUI rows like every other face (web /api/states rows + export JSON blocks
+      // parity, inc 67): threaded through the same per-target maps the web rows
+      // and export blocks carry — states rows have no timeout column, so the TUI
+      // must re-resolve from config.
+      httpTimeoutMs: httpTimeoutMs(config),
+      tlsTimeoutMs: tlsTimeoutMs(config),
       // apm warn criteria the collector summary is judged against (web drawApm
       // /drawErrRate marker parity): null error-rate here would leave the err
       // line unannotated even though the engine always judges against 0.05.
@@ -281,7 +288,15 @@ async function cmdOnce(args) {
     const assertAnno = r.kind === 'http' && (r.expectedStatusCode != null || r.bodyIncludes != null)
       ? `${r.expectedStatusCode != null ? ` exp ${r.expectedStatusCode}` : ''}${r.bodyIncludes != null ? ` body "${r.bodyIncludes}"` : ''}`
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}`);
+    // the abort timeout the probe was actually judged against rides the human
+    // row like the tui/web/export rows (inc 67 parity): the engine stamps
+    // timeoutMs on every http/tls result (check-http.js finalize / runTlsCheck),
+    // so this reads straight off the result — null-gated, so hypothetical
+    // timeout-less rows keep the compact shape.
+    const timeoutAnno = r.kind === 'http' || r.kind === 'tls'
+      ? (r.timeoutMs != null ? ` timeout ${r.timeoutMs}ms` : '')
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}`);
   }
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
