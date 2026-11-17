@@ -138,7 +138,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(svcApm.latency_threshold_ms, 500, 'configured apm slow-latency threshold reaches the web api row');
   assert.equal(svcApm.timeout_ms, null, 'apm rows carry no per-check abort timeout');
   assert.equal(svcApm.warn_days_before, null, 'apm rows carry no tls warn-days threshold');
-  assert.equal(svcApm.interval_seconds, null, 'apm rows carry no per-check run cadence');
+  assert.equal(svcApm.interval_seconds, 120, "configured apm collection cadence '2m' surfaces on the web api row");
   assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
   // the per-row judged-against threshold / abort timeout fields ride the web
   // api rows on the same shared slot once --json uses (latency_threshold_ms:

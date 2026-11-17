@@ -164,6 +164,11 @@ async function cmdRun(args) {
       // line unannotated even though the engine always judges against 0.05.
       apmLatencyThresholdMs: config.apm?.latencyThresholdMs ?? null,
       apmErrorRateThreshold: config.apm?.errorRateThreshold ?? 0.05,
+      // the apm collection cadence rides the TUI rows like every other face (web
+      // /api/states rows + export JSON blocks + once rows parity, inc 76): the
+      // cadence is config-global, resolved from the same scheduler mapping the
+      // mirror blocks carry.
+      apmIntervalSeconds: schedulerIntervals(config).apmIntervalSeconds,
       onExit: shutdown,
     });
     tui.start();
@@ -236,12 +241,16 @@ async function cmdOnce(args) {
   // The per-check run cadence the engine's scheduler runs each probe on rides
   // the once rows like every other face (web /api/states rows + export JSON
   // blocks + TUI rows parity, inc 71): resolved once from the same per-target
-  // maps the top-level http:/tls: mirror blocks carry, null off-kind.
+  // maps the top-level http:/tls: mirror blocks carry, null off-kind. The apm
+  // collection cadence is config-global (no per-target map), mirroring the
+  // scheduler: block (inc 76 parity).
   const httpIntMap = httpIntervalSeconds(config);
   const tlsIntMap = tlsIntervalSeconds(config);
+  const apmIntSec = schedulerIntervals(config).apmIntervalSeconds;
   for (const r of results) {
     r.intervalSeconds = r.kind === 'http' ? (httpIntMap[r.target] ?? null)
       : r.kind === 'tls' ? (tlsIntMap[r.target] ?? null)
+      : r.kind === 'apm' ? (apmIntSec ?? null)
       : null;
   }
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
@@ -335,9 +344,10 @@ async function cmdOnce(args) {
       : '';
     // the per-check run cadence rides the human row like the tui/web/export rows
     // (inc 71 parity): stamped onto each result in cmdOnce (intervalSeconds,
-    // resolved from the same per-target maps the other faces carry) —
-    // ` every 5m`-style, formatted compact. Null off-kind.
-    const intervalAnno = r.kind === 'http' || r.kind === 'tls'
+    // resolved from the same per-target maps the other faces carry) — the apm
+    // collection cadence rides too, from the config-global scheduler value (inc
+    // 76 parity). ` every 5m`-style, formatted compact. Null off-kind.
+    const intervalAnno = r.kind === 'http' || r.kind === 'tls' || r.kind === 'apm'
       ? (r.intervalSeconds != null ? ` every ${fmtInterval(r.intervalSeconds)}` : '')
       : '';
     // the per-probe slow-latency threshold whose exceedance demotes ok->warn
@@ -431,8 +441,9 @@ export function onceJsonRow(r) {
     // this target's run cadence (seconds between scheduled checks, the
     // intervalSeconds the engine's taskIntervalMs actually runs on, computed in
     // cmdOnce from the same per-target maps the web/export/TUI faces carry —
-    // inc 71 parity). Null off-kind.
-    interval_seconds: r.intervalSeconds ?? null, // http/tls only
+    // inc 71 parity; the apm cadence is the config-global scheduler value, inc 76).
+    // Null off-kind.
+    interval_seconds: r.intervalSeconds ?? null, // http/tls/apm only
     days_remaining: r.daysRemaining ?? null, // tls only
     warn_days_before: r.warnDaysBefore ?? null, // tls only
     chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)

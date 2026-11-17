@@ -42,6 +42,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.tls.timeout_ms, null, 'unconfigured tls cert-fetch timeout is null on the export snapshot');
   assert.equal(api.http.interval_seconds, null, 'unconfigured http run cadence is null on the export snapshot');
   assert.equal(api.tls.interval_seconds, null, 'unconfigured tls run cadence is null on the export snapshot');
+  assert.equal(api.apm.interval_seconds, 60, 'unconfigured apm run cadence resolves to the 60s default on the export snapshot');
   assert.equal(api.tls.days_remaining, 12);
   assert.equal(api.apm.p50_ms, 200);
   assert.equal(api.apm.p95_ms, 320, 'p95 ms surfaces on the export snapshot like p50');
@@ -89,9 +90,11 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // append to the detail exactly like the machine apm block carries them, plus
   // the measured error rate as ` err 10.0%` (inc 75 parity — the seeded 0.1
   // error_rate the detail's errors=1/10 fraction encodes, labeled for at-a-glance
-  // reading like the TUI apm-history err line)
+  // reading like the TUI apm-history err line) and the config-global collection
+  // cadence as ` · every 1m` (inc 76 parity — the 60s scheduler default apm's
+  // interval_seconds resolved to, rendered before the threshold annotations)
   const html2 = renderStatusPage(out2);
-  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms err 10\.0%/, 'judged-against apm thresholds and the measured error rate annotate the export page apm row');
+  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) · every 1m errThr 8\.0% slow thr 400ms err 10\.0%/, 'judged-against apm thresholds, the measured error rate and the collection cadence annotate the export page apm row');
   // the per-probe slow-latency threshold rides the http row too (inc 73 parity):
   // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
   // after the resolved cadence, exactly like the JSON http block carries it
