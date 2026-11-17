@@ -230,7 +230,10 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   store.saveMetric('tls:api/remaining', 12, Date.now());
   t.after(() => store.close());
 
-  const tui = new Tui({ store, intervalMs: 1000 });
+  // judged-against http assert criteria ride the row when configured (inc-64:
+  // once --json / web rows / export JSON parity): configure both maps for the
+  // broken target and expect `exp 200` + `body "welcome"` after its detail.
+  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' } });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -248,6 +251,10 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // The numeric response code rides the row like the web/export `· GET 200`
   // detail cells (inc-48 parity).
   assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\)/);
+  // the judged-against assert criteria reach the same row (inc-64 web/once/export
+  // parity): `exp 200` + `body "welcome"` after the detail, bare elsewhere
+  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome"/);
+  assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
   assert.match(out, /cert:expires in 12d/);
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);

@@ -139,6 +139,12 @@ async function cmdRun(args) {
       historyMs: (config.ui?.historySeconds ?? 24 * 3600) * 1000, // match web charts window
       latencyThresholds: httpLatencyThresholds(config),
       tlsWarnDaysBefore: tlsWarnDaysBefore(config),
+      // the judged-against http assert criteria ride the TUI rows like every
+      // other face (once --json / web rows / export JSON parity, inc-63+64):
+      // per-target expected status code + required body substring, resolved from
+      // the same canonical maps the web mirror blocks carry.
+      httpAssertStatusCodes: httpAssertStatusCodes(config),
+      httpAssertBodyIncludes: httpAssertBodyIncludes(config),
       // apm warn criteria the collector summary is judged against (web drawApm
       // /drawErrRate marker parity): null error-rate here would leave the err
       // line unannotated even though the engine always judges against 0.05.
