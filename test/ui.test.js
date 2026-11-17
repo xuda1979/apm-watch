@@ -60,6 +60,12 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /self-signed/);
   // the tls hover tooltip also surfaces each cert's valid-from time
   assert.match(html, /c\.validFrom/);
+  // the browser-side table renderer surfaces http verb + response code too
+  // (export page / TUI parity: /api/states carries method/status_code, the row
+  // renderer used to drop them, the detail now appends ` · GET 200`)
+  assert.match(html, /s\.kind === 'http'/);
+  assert.match(html, /s\.method/);
+  assert.match(html, /s\.status_code/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);

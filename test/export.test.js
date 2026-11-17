@@ -89,7 +89,7 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   // backdate states so availability sees a nonzero window (same-ms saves -> 0ms).
   const past = Date.now() - 60000;
   store.setClock(() => past);
-  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', statusCode: 200, detail: 'HTTP 200' });
   store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d', validChain: false, chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }] });
   store.saveState({ target: 'other', kind: 'http', status: 'error', latencyMs: null, detail: 'down' });
   store.saveState({ target: 'evil', kind: 'http', status: 'ok', latencyMs: 1, detail: '<script>alert(1)</script>& "x"' });
@@ -116,8 +116,10 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   assert.match(html, /valid 2025-01-01T00:00:00\.000Z/);
   assert.match(html, /notAfter 2030-01-01T00:00:00\.000Z/);
   assert.match(html, /12d \(self-signed\)/);
-  // uptime pct rendered in the http row detail
-  assert.match(html, /HTTP 200 · 100% uptime/);
+  // uptime pct rendered in the http row detail, after the verb + response code
+  // (web table row parity: export JSON carries method/status_code, the page
+  // renderer used to drop them, the row now shows `HTTP 200 · GET 200 · 100%`)
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime/);
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);
