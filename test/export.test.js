@@ -86,9 +86,12 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api2.tls.interval_seconds, 300, 'unconfigured per-cert interval resolves to the 300s default on the export snapshot');
   // the judged-against thresholds also annotate the rendered status-page apm row
   // (web table + TUI + once parity, inc 68): ` errThr 8.0%` / ` slow thr 400ms`
-  // append to the detail exactly like the machine apm block carries them
+  // append to the detail exactly like the machine apm block carries them, plus
+  // the measured error rate as ` err 10.0%` (inc 75 parity — the seeded 0.1
+  // error_rate the detail's errors=1/10 fraction encodes, labeled for at-a-glance
+  // reading like the TUI apm-history err line)
   const html2 = renderStatusPage(out2);
-  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms/, 'judged-against apm thresholds annotate the export page apm row');
+  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms err 10\.0%/, 'judged-against apm thresholds and the measured error rate annotate the export page apm row');
   // the per-probe slow-latency threshold rides the http row too (inc 73 parity):
   // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
   // after the resolved cadence, exactly like the JSON http block carries it

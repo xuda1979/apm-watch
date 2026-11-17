@@ -81,6 +81,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // latency_threshold_ms on apm rows, the row renderer used to drop them)
   assert.match(html, /s\.error_rate_threshold/);
   assert.match(html, /s\.latency_threshold_ms/);
+  // the browser-side table renderer surfaces the measured apm error rate too
+  // (export page / TUI / once parity: /api/states sends error_rate on apm rows
+  // — null when unseeded — the row renderer used to drop it, the detail now
+  // appends ` err N%` like the TUI apm-history err line)
+  assert.match(html, /s\.error_rate/);
   // the browser-side table renderer surfaces the per-check run cadence (export
   // page / TUI / once parity: /api/states sends interval_seconds on http + tls
   // rows, the row renderer used to drop it)
@@ -416,7 +421,7 @@ test('ui: tui renders apm p50/p95 + error-rate history like the web UI', async (
 
 test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRate parity)', async (t) => {
   const store = new Store(':memory:');
-  store.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 270, detail: 'p50=200ms p95=270ms errors=0/10 (slow p95)' });
+  store.saveState({ target: 'svc', kind: 'apm', status: 'warn', latencyMs: 270, errorRate: 0.1, detail: 'p50=200ms p95=270ms errors=0/10 (slow p95)' });
   store.saveState({ target: 'bare', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms errors=0/10' });
   for (const target of ['svc', 'bare']) {
     store.saveMetric(`apm:${target}/p50`, 20, Date.now() - 1000);
@@ -440,8 +445,8 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   // errThr/slow-thr format (inc 68 parity): every apm row carries the resolved
   // 5.0% error-rate threshold from the constructor plus the configured 250ms
   // latency threshold, appended after the engine detail line
-  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms/, 'warn live apm row annotates the judged-against thresholds');
-  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms/, 'bare live apm row annotates the judged-against thresholds too');
+  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms err 10\.0%/, 'warn live apm row annotates the judged-against thresholds and the measured error rate');
+  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms/, 'bare live apm row annotates the judged-against thresholds (unseeded error rate stays bare)');
 });
 
 test('ui: tui apm rows stay bare when no apm thresholds are configured', async (t) => {

@@ -326,8 +326,12 @@ async function cmdOnce(args) {
     // to the 0.05 default, latencyThresholdMs null when unconfigured — matching
     // onceJsonRow's error_rate_threshold / latency_threshold_ms). Same
     // ` errThr N%` / ` slow thr Nms` format the TUI apm-history section uses.
+    // The measured error rate rides along as ` err N%` (inc 75 parity) — the
+    // engine stamps errorRate on every apm result and the detail renders only
+    // the errors=N/M fraction, so the labeled percentage gives the terminal
+    // row the same at-a-glance rate the TUI apm-history err line carries.
     const apmAnno = r.kind === 'apm'
-      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}`
+      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}${r.errorRate != null ? ` err ${(r.errorRate * 100).toFixed(1)}%` : ''}`
       : '';
     // the per-check run cadence rides the human row like the tui/web/export rows
     // (inc 71 parity): stamped onto each result in cmdOnce (intervalSeconds,
