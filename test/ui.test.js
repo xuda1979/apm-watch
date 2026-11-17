@@ -27,7 +27,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   store.saveMetric('apm:svc/p95', 40, Date.now());
   store.saveMetric('apm:svc/errorRate', 0.1, Date.now());
 
-  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, intervalSeconds: '30s' }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30, timeoutMs: 4000, intervalSeconds: 90 }], store: { retentionDays: 14 }, notifications: { repeatIntervalSeconds: 7200 }, scheduler: { httpIntervalSeconds: '45s', tlsIntervalSeconds: 120, apmIntervalSeconds: '2m' } });
+  const server = createUiServer(store, { ui: { historySeconds: 3600 }, apm: { latencyThresholdMs: 500, windowMs: 90_000, maxSamples: 7 }, http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, intervalSeconds: '30s' }], tls: [{ name: 'api', host: 'fixture.test', warnDaysBefore: 30, timeoutMs: 4000, intervalSeconds: 90 }], store: { retentionDays: 14 }, notifications: { repeatIntervalSeconds: 7200, webhook: { url: 'https://example.com/hook' }, email: { host: 'smtp.example.com' } }, scheduler: { httpIntervalSeconds: '45s', tlsIntervalSeconds: 120, apmIntervalSeconds: '2m' } });
   const port = await listen(server);
   t.after(() => new Promise((r) => server.close(r)));
 
@@ -124,6 +124,8 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.store.retentionDays, 14, 'configured store retention reaches the web api');
   assert.equal(data.notifications.repeatIntervalSeconds, 7200, 'configured alert repeat-interval reaches the web api');
   assert.equal(data.notifications.desktop, true, 'unconfigured desktop-notification gate defaults to on (engine `!== false` parity) on the web api');
+  assert.equal(data.notifications.webhook, true, 'configured webhook URL surfaces the channel as enabled (engine `webhook.url` parity) on the web api');
+  assert.equal(data.notifications.email, true, 'configured SMTP host surfaces the channel as enabled (engine `email.host` parity) on the web api');
   // the scheduler grid, resolved + clamped exactly like the engine's buildTasks
   assert.equal(data.scheduler.httpIntervalSeconds, 45, "unit-string '45s' resolves to 45s");
   assert.equal(data.scheduler.tlsIntervalSeconds, 120, 'plain tls interval surfaces as configured');

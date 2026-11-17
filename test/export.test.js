@@ -80,6 +80,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // alert repeat-interval (the engine's re-send dedup window): default 3600
   assert.equal(out.notifications.repeatIntervalSeconds, 3600, 'unconfigured alert repeat-interval surfaces as the 3600s default');
   assert.equal(out.notifications.desktop, true, 'unconfigured desktop-notification gate surfaces as on (engine `!== false` parity) on the export JSON snapshot');
+  assert.equal(out.notifications.webhook, false, 'unconfigured webhook channel surfaces as disabled on the export JSON snapshot');
+  assert.equal(out.notifications.email, false, 'unconfigured email channel surfaces as disabled on the export JSON snapshot');
   // the scheduler grid the engine's task intervals actually run on: defaults
   assert.deepEqual(out.scheduler, { httpIntervalSeconds: 60, tlsIntervalSeconds: 300, apmIntervalSeconds: 60 }, 'default scheduler grid surfaces on the export JSON snapshot');
   // availability/series history window the snapshot aggregates over: ui.historySeconds
