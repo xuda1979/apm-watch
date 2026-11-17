@@ -40,6 +40,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.http.body_includes, null, 'unconfigured http assert body marker is null on the export snapshot');
   assert.equal(api.tls.warn_days_before, null, 'unconfigured tls warn-days threshold is null on the export snapshot');
   assert.equal(api.tls.timeout_ms, null, 'unconfigured tls cert-fetch timeout is null on the export snapshot');
+  assert.equal(api.http.interval_seconds, null, 'unconfigured http run cadence is null on the export snapshot');
+  assert.equal(api.tls.interval_seconds, null, 'unconfigured tls run cadence is null on the export snapshot');
   assert.equal(api.tls.days_remaining, 12);
   assert.equal(api.apm.p50_ms, 200);
   assert.equal(api.apm.p95_ms, 320, 'p95 ms surfaces on the export snapshot like p50');
@@ -77,6 +79,11 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api2.tls.timeout_ms, 4000, 'configured tls cert-fetch timeout surfaces on the export snapshot');
   assert.equal(api2.apm.error_rate_threshold, 0.08, 'configured apm error-rate threshold surfaces on the export snapshot');
   assert.equal(api2.apm.latency_threshold_ms, 400, 'configured apm slow-latency threshold surfaces on the export snapshot');
+  // per-check run cadence traces the same resolve path as the thresholds: cfg2
+  // sets no intervalSeconds, so the per-target map resolves the kind defaults
+  // (60s http / 300s tls) exactly like the mirror blocks assert above
+  assert.equal(api2.http.interval_seconds, 60, 'unconfigured per-http interval resolves to the 60s default on the export snapshot');
+  assert.equal(api2.tls.interval_seconds, 300, 'unconfigured per-cert interval resolves to the 300s default on the export snapshot');
   // the judged-against thresholds also annotate the rendered status-page apm row
   // (web table + TUI + once parity, inc 68): ` errThr 8.0%` / ` slow thr 400ms`
   // append to the detail exactly like the machine apm block carries them
@@ -185,6 +192,11 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   // no timeoutMs in the config so the per-target map resolves the 5000 default,
   // exactly like the web/export JSON `timeout_ms` value the block carries
   assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 5000ms/, 'resolved abort timeout annotates the export page http row');
+  // the resolved per-check run cadence rides the row too (inc-71 parity): api
+  // sets no intervalSeconds so the per-target map resolves the 60s http default,
+  // formatted compact like the web/TUI/once human faces (` · every 1m` — 60s
+  // renders as 1m under the shared fmtInterval short-form)
+  assert.match(html, /HTTP 200 · GET 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 5000ms · every 1m/, 'resolved run cadence annotates the export page http row');
   // detail is html-escaped: < and & cannot break out of the page
   assert.doesNotMatch(html, /<script/i);
   assert.match(html, /apm-watch v9\.9\.9/);

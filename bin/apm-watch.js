@@ -152,6 +152,13 @@ async function cmdRun(args) {
       // must re-resolve from config.
       httpTimeoutMs: httpTimeoutMs(config),
       tlsTimeoutMs: tlsTimeoutMs(config),
+      // the per-check run cadences ride the TUI rows like every other face (web
+      // /api/states rows + export JSON blocks + once rows parity, inc 71):
+      // threaded through the same per-target maps the web rows and export blocks
+      // carry — states rows have no cadence column, so the TUI must re-resolve
+      // from config.
+      httpIntervalSeconds: httpIntervalSeconds(config),
+      tlsIntervalSeconds: tlsIntervalSeconds(config),
       // apm warn criteria the collector summary is judged against (web drawApm
       // /drawErrRate marker parity): null error-rate here would leave the err
       // line unannotated even though the engine always judges against 0.05.
@@ -224,6 +231,17 @@ async function cmdOnce(args) {
     r.uptimePct = avail && avail.pct != null ? avail.pct : null;
     r.uptimeMs = avail && avail.totalMs > 0
       ? { up_ms: avail.upMs, down_ms: avail.downMs, total_ms: avail.totalMs, samples: avail.samples }
+      : null;
+  }
+  // The per-check run cadence the engine's scheduler runs each probe on rides
+  // the once rows like every other face (web /api/states rows + export JSON
+  // blocks + TUI rows parity, inc 71): resolved once from the same per-target
+  // maps the top-level http:/tls: mirror blocks carry, null off-kind.
+  const httpIntMap = httpIntervalSeconds(config);
+  const tlsIntMap = tlsIntervalSeconds(config);
+  for (const r of results) {
+    r.intervalSeconds = r.kind === 'http' ? (httpIntMap[r.target] ?? null)
+      : r.kind === 'tls' ? (tlsIntMap[r.target] ?? null)
       : null;
   }
   // Exit code mirrors the worst status so `once` works as a cron/CI smoke check:
@@ -305,7 +323,14 @@ async function cmdOnce(args) {
     const apmAnno = r.kind === 'apm'
       ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}`
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${apmAnno}`);
+    // the per-check run cadence rides the human row like the tui/web/export rows
+    // (inc 71 parity): stamped onto each result in cmdOnce (intervalSeconds,
+    // resolved from the same per-target maps the other faces carry) —
+    // ` every 5m`-style, formatted compact. Null off-kind.
+    const intervalAnno = r.kind === 'http' || r.kind === 'tls'
+      ? (r.intervalSeconds != null ? ` every ${fmtInterval(r.intervalSeconds)}` : '')
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${apmAnno}`);
   }
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
@@ -328,6 +353,15 @@ function fmtDuration(ms) {
   if (min < 60) return `${min}m ${sec % 60}s`;
   const h = Math.floor(min / 60);
   return `${h}h ${min % 60}m`;
+}
+
+// compact run-cadence label (90 -> '90s', 120 -> '2m', 300 -> '5m'),
+// mirroring the fmtInterval helpers on the web / export / TUI faces
+function fmtInterval(sec) {
+  if (sec < 60) return `${sec}s`;
+  const m = Math.floor(sec / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
 // Severity rank across the ok/warn/error status set. warn is "soft" failure,
@@ -364,6 +398,11 @@ export function onceJsonRow(r) {
     // socket timeout the check was aborted by (both default 5000, stamped on
     // the engine results; latency_threshold_ms precedent)
     timeout_ms: r.timeoutMs ?? null,
+    // this target's run cadence (seconds between scheduled checks, the
+    // intervalSeconds the engine's taskIntervalMs actually runs on, computed in
+    // cmdOnce from the same per-target maps the web/export/TUI faces carry —
+    // inc 71 parity). Null off-kind.
+    interval_seconds: r.intervalSeconds ?? null, // http/tls only
     days_remaining: r.daysRemaining ?? null, // tls only
     warn_days_before: r.warnDaysBefore ?? null, // tls only
     chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)

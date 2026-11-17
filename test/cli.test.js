@@ -263,6 +263,11 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(ok.latency_threshold_ms, null, 'unconfigured http threshold is null, not dropped');
   assert.equal(slow.timeout_ms, 1234, 'configured per-http abort timeout surfaces on once --json rows');
   assert.equal(ok.timeout_ms, 5000, 'unconfigured http timeout defaults to 5000, not dropped');
+  // per-check run cadence traces the same resolve path (inc-71 parity): neither
+  // entry sets intervalSeconds, so the per-target map resolves the 60s http
+  // default on every row exactly like the mirror block asserts below
+  assert.equal(ok.interval_seconds, 60, 'unconfigured per-http interval resolves to the 60s default on once --json rows');
+  assert.equal(slow.interval_seconds, 60, 'unconfigured per-http interval resolves to the 60s default on once --json rows');
   assert.equal(ok.error_rate_threshold, null, 'apm-only error-rate threshold is null on http rows');
   assert.equal(ok.expected_status_code, 200, 'the configured expected status surfaces on once --json rows');
   assert.equal(slow.expected_status_code, null, 'unconfigured expected status is null, not dropped');
@@ -341,6 +346,9 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.warn_days_before, 30);
   // the cert-fetch socket timeout that would have aborted the fetch (web/export parity)
   assert.equal(tls.timeout_ms, 1500);
+  // the per-check run cadence (inc-71 parity): no intervalSeconds configured,
+  // so the per-target map resolves the 300s tls default like the mirror block
+  assert.equal(tls.interval_seconds, 300, 'unconfigured per-cert interval resolves to the 300s default on once --json rows');
   // per-kind threshold/timeout/interval mirror maps (web + export parity): the
   // configured per-cert warn-days and socket timeout surface on the envelope
   assert.deepEqual(doc.tls.warnDaysBefore, { 'cert-soon': 30 }, 'configured per-cert warn-days surface in the mirror map');

@@ -81,6 +81,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // latency_threshold_ms on apm rows, the row renderer used to drop them)
   assert.match(html, /s\.error_rate_threshold/);
   assert.match(html, /s\.latency_threshold_ms/);
+  // the browser-side table renderer surfaces the per-check run cadence (export
+  // page / TUI / once parity: /api/states sends interval_seconds on http + tls
+  // rows, the row renderer used to drop it)
+  assert.match(html, /s\.interval_seconds/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
@@ -119,6 +123,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(svcApm.latency_threshold_ms, 500, 'configured apm slow-latency threshold reaches the web api row');
   assert.equal(svcApm.timeout_ms, null, 'apm rows carry no per-check abort timeout');
   assert.equal(svcApm.warn_days_before, null, 'apm rows carry no tls warn-days threshold');
+  assert.equal(svcApm.interval_seconds, null, 'apm rows carry no per-check run cadence');
   assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
   // the per-row judged-against threshold / abort timeout fields ride the web
   // api rows on the same shared slot once --json uses (latency_threshold_ms:
@@ -126,6 +131,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiHttp.latency_threshold_ms, 200, 'configured per-http latency threshold surfaces on the web api row');
   assert.equal(apiHttp.timeout_ms, 3000, 'configured per-http abort timeout surfaces on the web api row');
   assert.equal(apiHttp.warn_days_before, null, 'http rows carry no tls warn-days threshold');
+  assert.equal(apiHttp.interval_seconds, 30, "configured per-http run cadence '30s' surfaces on the web api row");
   // the judged-against assert criteria ride the web api row on the same slot
   // once --json uses (expected_status_code / body_includes parity): re-resolved
   // from config because a stored snapshot can't recall the criteria it met
@@ -137,6 +143,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiTls.latency_threshold_ms, null, 'tls rows carry no latency threshold');
   assert.equal(apiTls.timeout_ms, 4000, 'configured cert-fetch socket timeout surfaces on the web api row');
   assert.equal(apiTls.warn_days_before, 30, 'configured cert warn-days threshold surfaces on the web api row');
+  assert.equal(apiTls.interval_seconds, 90, 'configured per-tls run cadence 90 surfaces on the web api row');
 
   // history curves present, keyed per target (so the browser can draw one
   // line per endpoint), points in seconds ts space
@@ -251,8 +258,12 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the resolved per-target abort timeouts ride the rows too (inc-67 parity):
   // threaded through the same config maps the web /api/states rows + export
   // JSON blocks carry — http 1234ms resolves on the broken row, tls 5000ms on
-  // the api row (no `states` timeout column, so the TUI re-resolves from config)
-  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 } });
+  // the api row (no `states` timeout column, so the TUI re-resolves from config).
+  // the per-check run cadence rides the rows too (inc-71 parity): threaded
+  // through the same per-target maps the web rows + export JSON carry —
+  // ` every 55s` on the broken http row, ` every 2m` on the api tls row,
+  // unconfigured targets stay bare.
+  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 }, httpIntervalSeconds: { broken: 55 }, tlsIntervalSeconds: { api: 120 } });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -276,10 +287,13 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the resolved http abort timeout rides the same row (inc-67 parity): the
   // broken row carries `timeout 1234ms`, the api tls row carries `timeout 5000ms`,
   // and unconfigured targets stay bare
-  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms/);
-  assert.match(out, /cert:expires in 12d .* timeout 5000ms/);
+  assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms every 55s/);
+  assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m/);
   assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
   assert.match(out, /cert:expires in 12d/);
+  // unconfigured targets carry no run-cadence annotation: the api http row has
+  // no entry in httpIntervalSeconds, so its line stays bare of `every`
+  assert.doesNotMatch(out, /ok  api  http:.* every /, 'unconfigured http target carries no run-cadence annotation');
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
   // per-cert chain path surfaces in the row, leaf-first (web/export tooltip
