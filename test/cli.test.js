@@ -366,9 +366,15 @@ test('cli: once human output surfaces tls chain metadata (leaf subject)', async 
   t.after(srv.close);
   const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // the fetched socket chain is a single self-signed cert, so to exercise the
+  // multi-cert chain-path annotation (inc 72 parity) the row's chain is sourced
+  // from the pemFile path with the cert duplicated: two CERT blocks parse into
+  // a chain of length 2 (both self-signed, valid), rendering `chain: A -> A`
+  const dup = path.join(dir, 'dup.pem');
+  writeFileSync(dup, srv.cert.crtPem + srv.cert.crtPem);
   const cfg = path.join(dir, 'tls-hum.json');
   writeFileSync(cfg, JSON.stringify({
-    tls: [{ name: 'cert-soon', host: '127.0.0.1', port: srv.port, rejectUnauthorized: false, warnDaysBefore: 30 }],
+    tls: [{ name: 'cert-soon', pemFile: dup, warnDaysBefore: 30 }],
     store: { path: path.join(dir, 'tls-hum.db') },
   }));
   const { code, stdout, stderr } = await runOnce(cfg);
@@ -376,6 +382,9 @@ test('cli: once human output surfaces tls chain metadata (leaf subject)', async 
   // the warn detail plus the leaf-subject suffix, matching the tui row format
   assert.match(stdout, /tls cert-soon: expires in 15d/);
   assert.match(stdout, /\(CN=fixture\.test\)/, `leaf subject surfaces in the human report\nstdout:\n${stdout}`);
+  // the full per-cert chain path rides the row like the TUI `chain: A -> B`
+  // annotation (inc 72 parity): both entries shortened to their CN component
+  assert.match(stdout, /  chain: CN=fixture\.test -> CN=fixture\.test/, `multi-cert chain path surfaces in the human report\nstdout:\n${stdout}`);
   // a valid chain must not be flagged as broken
   assert.doesNotMatch(stdout, /chain broken/);
 });

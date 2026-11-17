@@ -283,9 +283,15 @@ async function cmdOnce(args) {
     // parity): states without a code (network-error path) keep the compact
     // `GET err:...` shape, so guard on null.
     const code = r.statusCode != null ? r.statusCode + ' ' : '';
-    // tls chain metadata, mirroring the tui row / web table & tooltip
+    // tls chain metadata, mirroring the tui row / web table & tooltip. The
+    // multi-cert chain path rides the row leaf-first like the TUI `chain: A
+    // -> B` annotation (inc 72 parity): runTlsCheck returns the full per-cert
+    // array on every tls result (once --json carries it as `chain`), but the
+    // human row used to drop it, showing only the leaf subject. Single-cert
+    // chains are already covered by the leaf subject, so gate on length > 1
+    // exactly like the TUI row.
     const tls = r.kind === 'tls'
-      ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}`
+      ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}${Array.isArray(r.chain) && r.chain.length > 1 ? `  chain: ${r.chain.map((c) => shortName(c.subject)).join(' -> ')}` : ''}`
       : '';
     // http rows whose detail prose carries no timing figure (assert/body
     // mismatches, network errors — unlike `HTTP 200 in Nms`, `slow: Nms >`,
@@ -362,6 +368,14 @@ function fmtInterval(sec) {
   const m = Math.floor(sec / 60);
   if (m < 60) return `${m}m`;
   return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+// last slash-separated component of an x509 subject (`/C=US/O=Acme/CN=fixture.test`
+// -> `CN=fixture.test`), mirroring the TUI row's shortName so the once human tls
+// chain annotation matches its format exactly
+function shortName(subject) {
+  const part = String(subject ?? '').split('/').filter(Boolean).pop();
+  return part || '?';
 }
 
 // Severity rank across the ok/warn/error status set. warn is "soft" failure,
