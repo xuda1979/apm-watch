@@ -152,6 +152,16 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.availability['api'].pct, 100);   // single ok snapshot -> up for the whole window
   assert.equal(data.availability['api'].samples, 1);
 
+  // per-row availability parity: the http states row carries uptime_pct /
+  // uptime_ms like export JSON (export.js:43) and once --json (inc 58), drawn
+  // from the same window as the top-level availability map; off-kind rows null
+  assert.equal(apiHttp.uptime_pct, 100, 'per-row http availability pct matches the top-level availability map');
+  assert.deepEqual(apiHttp.uptime_ms, { up_ms: data.availability['api'].upMs, down_ms: data.availability['api'].downMs, total_ms: data.availability['api'].totalMs, samples: 1 });
+  assert.equal(apiTls.uptime_pct, null, 'tls rows carry no availability pct');
+  assert.equal(apiTls.uptime_ms, null, 'tls rows carry no availability breakdown');
+  assert.equal(svcApm.uptime_pct, null, 'apm rows carry no availability pct');
+  assert.equal(svcApm.uptime_ms, null, 'apm rows carry no availability breakdown');
+
   // events API: seeded store events, newest first
   store.addEvent('warn', 'http', 'down then up');
   store.addEvent('info', 'http', 'api: recovered');
