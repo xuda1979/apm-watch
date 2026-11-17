@@ -4,7 +4,7 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpAssertStatusCodes, httpAssertBodyIncludes, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsIntervalSeconds, schedulerIntervals, uiHistorySeconds, notificationsDesktop, notificationsWebhookEnabled, notificationsEmailEnabled } from '../lib/config.js';
+import { loadConfig, httpLatencyThresholds, httpTimeoutMs, httpAssertStatusCodes, httpAssertBodyIncludes, httpIntervalSeconds, tlsWarnDaysBefore, tlsTimeoutMs, tlsPort, tlsIntervalSeconds, schedulerIntervals, uiHistorySeconds, notificationsDesktop, notificationsWebhookEnabled, notificationsEmailEnabled } from '../lib/config.js';
 import { assertValidConfig } from '../lib/validate.js';
 import { Store } from '../lib/store.js';
 import { Engine, retentionDays } from '../lib/engine.js';
@@ -152,6 +152,12 @@ async function cmdRun(args) {
       // must re-resolve from config.
       httpTimeoutMs: httpTimeoutMs(config),
       tlsTimeoutMs: tlsTimeoutMs(config),
+      // the per-tls-target probe port rides the TUI rows like every other face
+      // (web /api/states rows + export JSON blocks + once rows parity, inc 78):
+      // threaded through the same per-target map the web rows and export blocks
+      // carry — states rows have no port column, so the TUI must re-resolve
+      // from config (pemFile targets resolve to null, no socket opened).
+      tlsPort: tlsPort(config),
       // the per-check run cadences ride the TUI rows like every other face (web
       // /api/states rows + export JSON blocks + once rows parity, inc 71):
       // threaded through the same per-target maps the web rows and export blocks
@@ -281,7 +287,7 @@ async function cmdOnce(args) {
       exit_code: process.exitCode,
       apm: { collect: config.apm?.collect === true, errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
       http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), assertStatusCodes: httpAssertStatusCodes(config), assertBodyIncludes: httpAssertBodyIncludes(config), intervalSeconds: httpIntervalSeconds(config) },
-      tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), intervalSeconds: tlsIntervalSeconds(config) },
+      tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), port: tlsPort(config), intervalSeconds: tlsIntervalSeconds(config) },
       store: { retentionDays: retentionDays(config?.store) },
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
       scheduler: schedulerIntervals(config),
@@ -372,7 +378,13 @@ async function cmdOnce(args) {
     // the config default when unset), so this reads straight off the result —
     // null-gated, so targets without a configured warn window keep the bare row.
     const warnAnno = r.kind === 'tls' && r.warnDaysBefore != null ? ` warn ${r.warnDaysBefore}d` : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${thrAnno}${warnAnno}${apmAnno}`);
+    // the port the cert check actually probed rides the human row like the
+    // tui/web/export rows (inc 78 parity): stamped onto every tls result by
+    // engine.runTlsCheck (cfg.port ?? 443 for sockets, null for pemFile
+    // bundles), so this reads straight off the result — null-gated, so
+    // pemFile targets keep the bare row.
+    const portAnno = r.kind === 'tls' && r.port != null ? ` port ${r.port}` : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${thrAnno}${warnAnno}${portAnno}${apmAnno}`);
   }
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
@@ -456,6 +468,7 @@ export function onceJsonRow(r) {
     interval_seconds: r.intervalSeconds ?? null, // http/tls/apm only
     days_remaining: r.daysRemaining ?? null, // tls only
     warn_days_before: r.warnDaysBefore ?? null, // tls only
+    port: r.port ?? null, // tls only (probe port the cert check actually ran against: cfg.port ?? 443 for sockets, null for pemFile bundles)
     chain: r.chain?.length ? r.chain : null, // tls only (empty/error chain -> null, matching web/export)
     valid_chain: r.validChain ?? null,       // tls only
     leaf_subject: r.leafSubject ?? null,     // tls only

@@ -100,6 +100,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // warn_days_before, the row renderer used to drop it — the `· warn Nd` cell
   // mirrors the dashed tls chart line and the TUI history annotation)
   assert.match(html, /s\.warn_days_before/);
+  // the browser-side table renderer surfaces the tls probe port (export page /
+  // TUI / once parity, inc 78: /api/states sends tls `port`, the row renderer
+  // used to drop it — the `· port N` cell mirrors the export page / once / TUI
+  // annotations so socket cert rows show the endpoint probed)
+  assert.match(html, /s\.port/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
@@ -164,6 +169,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(apiTls.timeout_ms, 4000, 'configured cert-fetch socket timeout surfaces on the web api row');
   assert.equal(apiTls.warn_days_before, 30, 'configured cert warn-days threshold surfaces on the web api row');
   assert.equal(apiTls.interval_seconds, 90, 'configured per-tls run cadence 90 surfaces on the web api row');
+  assert.equal(apiTls.port, 443, 'unconfigured tls probe port resolves to the 443 socket default on the web api row');
   assert.equal(apiHttp.window_ms, null, 'http rows carry no apm collector window');
 
   // history curves present, keyed per target (so the browser can draw one
@@ -189,6 +195,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.deepEqual(data.http.assertStatusCodes, { api: 200 }, 'per-target assert status codes reach the web api');
   assert.deepEqual(data.http.assertBodyIncludes, { api: 'fixture' }, 'per-target assert body markers reach the web api');
   assert.deepEqual(data.tls.warnDaysBefore, { api: 30 }, 'per-target cert warn thresholds reach the web api');
+  assert.deepEqual(data.tls.port, { api: 443 }, 'per-target cert probe port resolves to the 443 socket default and reaches the web api');
   assert.deepEqual(data.http.intervalSeconds, { api: 30 }, "per-check http interval '30s' beats the scheduler-wide 45s and reaches the web api");
   assert.deepEqual(data.tls.intervalSeconds, { api: 90 }, 'per-check tls interval 90 beats the scheduler-wide 120 and reaches the web api');
   assert.equal(data.store.retentionDays, 14, 'configured store retention reaches the web api');
@@ -290,7 +297,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the judged-against cert warn-days threshold rides the tls row too (inc 74
   // parity): threaded through the same per-target map the web /api/states rows +
   // export JSON + history section carry — ` warn 30d` on the api tls row.
-  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 }, httpIntervalSeconds: { broken: 55 }, tlsIntervalSeconds: { api: 120 }, latencyThresholds: { broken: 400 }, tlsWarnDaysBefore: { api: 30 } });
+  const tui = new Tui({ store, intervalMs: 1000, httpAssertStatusCodes: { broken: 200 }, httpAssertBodyIncludes: { broken: 'welcome' }, httpTimeoutMs: { broken: 1234 }, tlsTimeoutMs: { api: 5000 }, httpIntervalSeconds: { broken: 55 }, tlsIntervalSeconds: { api: 120 }, latencyThresholds: { broken: 400 }, tlsWarnDaysBefore: { api: 30 }, tlsPort: { api: 443 } });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -316,6 +323,7 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // and unconfigured targets stay bare
   assert.match(out, /http:GET 503 error:— 0% \(expected status 200, got 503\) exp 200 body "welcome" timeout 1234ms every 55s thr 400ms/);
   assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m warn 30d/);
+  assert.match(out, /cert:expires in 12d .* timeout 5000ms every 2m warn 30d port 443/);
   assert.doesNotMatch(out, /api: .* exp /, 'unconfigured http target carries no assert annotation');
   assert.match(out, /cert:expires in 12d/);
   // unconfigured targets carry no run-cadence annotation: the api http row has
@@ -328,6 +336,9 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // the tls warn-days threshold annotates the api tls row (inc 74 parity), while
   // the http row carries no cert-warn annotation at all
   assert.doesNotMatch(out, /ok  api  http:.* warn /, 'http rows carry no cert warn-days annotation');
+  // the probed tls port rides the api cert row (inc 78 parity): threaded through
+  // the same per-target map, so the socket cert row shows the endpoint probed
+  assert.match(out, /cert:expires in 12d .* port 443/);
   // leaf cert subject surfaces next to the tls detail
   assert.match(out, /\(\/CN=fixture\.test\)/);
   // per-cert chain path surfaces in the row, leaf-first (web/export tooltip

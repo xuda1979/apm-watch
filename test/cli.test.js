@@ -73,6 +73,7 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(tls.window_ms, null, 'apm-only collector window is null on tls rows');
   assert.equal(tls.timeout_ms, 4000, 'cert-fetch socket timeout surfaces on tls rows');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
+  assert.equal(tls.port, null, 'tls row without a probed port keeps the field null, not dropped');
   assert.equal(tls.uptime_pct, null, 'http-only availability pct is null on tls rows');
   assert.equal(tls.uptime_ms, null, 'http-only availability breakdown is null on tls rows');
 });
@@ -209,6 +210,7 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   assert.deepEqual(doc.tls.warnDaysBefore, {}, 'empty-config tls warn-days map stays {} on once --json');
   assert.deepEqual(doc.tls.timeoutMs, {}, 'empty-config tls timeout map stays {} on once --json');
   assert.deepEqual(doc.tls.intervalSeconds, {}, 'empty-config tls interval map stays {} on once --json');
+  assert.deepEqual(doc.tls.port, {}, 'empty-config tls probe-port map stays {} on once --json');
   // monitor self-health: the apm run above persisted it, so the once --json
   // envelope surfaces the same block the web /api/states + export emit (web +
   // export parity for the cron/CI document)
@@ -353,6 +355,10 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.equal(tls.warn_days_before, 30);
   // the cert-fetch socket timeout that would have aborted the fetch (web/export parity)
   assert.equal(tls.timeout_ms, 1500);
+  // the probe port the cert check actually ran against (web/export parity, inc
+  // 78): cfg's cert-soon socket target carries the fixture port, so the json
+  // row surfaces it exactly like the mirror map resolves it
+  assert.equal(tls.port, srv.port, 'the cert probe port the socket check ran against flows into once --json rows');
   // the per-check run cadence (inc-71 parity): no intervalSeconds configured,
   // so the per-target map resolves the 300s tls default like the mirror block
   assert.equal(tls.interval_seconds, 300, 'unconfigured per-cert interval resolves to the 300s default on once --json rows');
@@ -361,6 +367,7 @@ test('cli: once --json includes numeric days_remaining for tls checks', async (t
   assert.deepEqual(doc.tls.warnDaysBefore, { 'cert-soon': 30 }, 'configured per-cert warn-days surface in the mirror map');
   assert.deepEqual(doc.tls.timeoutMs, { 'cert-soon': 1500 }, 'configured per-cert fetch timeout surfaces in the mirror map');
   assert.deepEqual(doc.tls.intervalSeconds, { 'cert-soon': 300 }, 'unconfigured per-cert interval resolves to the 300s default');
+  assert.deepEqual(doc.tls.port, { 'cert-soon': srv.port }, 'configured per-cert probe port surfaces in the mirror map');
   assert.deepEqual(doc.http.latencyThresholds, {}, 'empty-config http threshold map stays {} on once --json');
   assert.deepEqual(doc.http.timeoutMs, {}, 'empty-config http timeout map stays {} on once --json');
   assert.deepEqual(doc.http.assertStatusCodes, {}, 'empty-config http assert status map stays {} on once --json');
@@ -432,6 +439,9 @@ test('cli: once --json nulls the chain when a tls check fails', async (t) => {
   assert.equal(tls.warn_days_before, 30);
   // the cert-fetch socket timeout stamps the failed row too, like warnDaysBefore
   assert.equal(tls.timeout_ms, 1500);
+  // a pemFile bundle opens no socket, so its probe port is null even on the
+  // failed path (web/export parity, inc 78)
+  assert.equal(tls.port, null, 'pemFile cert checks carry no probed port on once --json rows');
   // monitor self-health reflects the failure path (web/export parity on the
   // cron/CI document): the error check recorded a hard state, so the block
   // carries error status rather than the all-ok default

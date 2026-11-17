@@ -40,6 +40,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.http.body_includes, null, 'unconfigured http assert body marker is null on the export snapshot');
   assert.equal(api.tls.warn_days_before, null, 'unconfigured tls warn-days threshold is null on the export snapshot');
   assert.equal(api.tls.timeout_ms, null, 'unconfigured tls cert-fetch timeout is null on the export snapshot');
+  assert.equal(api.tls.port, null, 'unconfigured tls probe port is null on the export snapshot');
   assert.equal(api.http.interval_seconds, null, 'unconfigured http run cadence is null on the export snapshot');
   assert.equal(api.tls.interval_seconds, null, 'unconfigured tls run cadence is null on the export snapshot');
   assert.equal(api.apm.interval_seconds, 60, 'unconfigured apm run cadence resolves to the 60s default on the export snapshot');
@@ -78,6 +79,10 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api2.http.body_includes, 'welcome', 'configured assert body marker surfaces on the export snapshot');
   assert.equal(api2.tls.warn_days_before, 14, 'configured tls warn-days threshold surfaces on the export snapshot');
   assert.equal(api2.tls.timeout_ms, 4000, 'configured tls cert-fetch timeout surfaces on the export snapshot');
+  // the probe port resolves the same path as the timeout: cfg2's tls target
+  // sets no port, so the per-target map resolves the 443 socket default exactly
+  // like the engine's runTlsCheck fetches over (inc 78 parity)
+  assert.equal(api2.tls.port, 443, 'configured tls probe port resolves to the 443 socket default on the export snapshot');
   assert.equal(api2.apm.error_rate_threshold, 0.08, 'configured apm error-rate threshold surfaces on the export snapshot');
   assert.equal(api2.apm.latency_threshold_ms, 400, 'configured apm slow-latency threshold surfaces on the export snapshot');
   assert.equal(api2.apm.window_ms, 60_000, 'unconfigured collector window resolves to the 60s default on the export snapshot');
@@ -104,11 +109,15 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // parity): api carries warnDaysBefore 14 in cfg2, so the detail appends
   // ` · warn 14d` after the resolved cadence, exactly like the JSON tls block
   // carries it and the TUI history section annotates it
-  assert.match(html2, /expires in 12d · \/CN=fixture\.test · timeout 4000ms · every 5m · warn 14d/, 'configured cert warn-days threshold annotates the export page tls row');
+  assert.match(html2, /expires in 12d · \/CN=fixture\.test · timeout 4000ms · every 5m · warn 14d · port 443/, 'configured cert warn-days threshold and probed port annotate the export page tls row');
   assert.deepEqual(out2.http.latencyThresholds, { api: 200 }, 'mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertStatusCodes, { api: 201 }, 'assert status mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertBodyIncludes, { api: 'welcome' }, 'assert body mirror block matches the per-target resolved map');
   assert.deepEqual(out2.tls.warnDaysBefore, { api: 14 }, 'mirror block matches the per-target resolved map');
+  // the per-target probe-port map (web api parity): cfg2's tls target sets no
+  // port, so it resolves to the 443 socket default exactly like the engine's
+  // runTlsCheck fetches over (inc 78)
+  assert.deepEqual(out2.tls.port, { api: 443 }, 'probe-port mirror block matches the per-target resolved map');
   // the closed-over-target "other" row (no config entry) stays null
   const other2 = out2.targets.find((t) => t.target === 'other');
   assert.equal(other2.http.latency_threshold_ms, null, 'unconfigured target keeps null on the export snapshot');
@@ -144,6 +153,8 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.deepEqual(out.tls.warnDaysBefore, {}, 'empty-config tls warn-days map defaults to {}');
   // per-target cert-fetch timeout map (web api parity): none configured -> {}
   assert.deepEqual(out.tls.timeoutMs, {}, 'empty-config tls timeout map defaults to {}');
+  // per-target cert probe-port map (web api parity): none configured -> {}
+  assert.deepEqual(out.tls.port, {}, 'empty-config tls probe-port map defaults to {}');
   // per-check run-interval maps (web api parity): none configured -> {}
   assert.deepEqual(out.http.intervalSeconds, {}, 'empty-config http run-interval map defaults to {}');
   assert.deepEqual(out.tls.intervalSeconds, {}, 'empty-config tls run-interval map defaults to {}');
