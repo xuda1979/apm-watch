@@ -71,6 +71,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // expected_status_code + body_includes, the row renderer used to drop them)
   assert.match(html, /s\.expected_status_code/);
   assert.match(html, /s\.body_includes/);
+  // the browser-side table renderer surfaces the judged-against apm thresholds
+  // (export page / TUI / once parity: /api/states sends error_rate_threshold +
+  // latency_threshold_ms on apm rows, the row renderer used to drop them)
+  assert.match(html, /s\.error_rate_threshold/);
+  assert.match(html, /s\.latency_threshold_ms/);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
@@ -389,6 +394,12 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   assert.match(out, /bare: .*slow thr 250ms/);
   // the resolved error-rate threshold annotates the err lines
   assert.match(out, /err 3\.0% .*errThr 5\.0%/);
+  // the judged-against thresholds also annotate the live apm rows, same
+  // errThr/slow-thr format (inc 68 parity): every apm row carries the resolved
+  // 5.0% error-rate threshold from the constructor plus the configured 250ms
+  // latency threshold, appended after the engine detail line
+  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms/, 'warn live apm row annotates the judged-against thresholds');
+  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms/, 'bare live apm row annotates the judged-against thresholds too');
 });
 
 test('ui: tui apm rows stay bare when no apm thresholds are configured', async (t) => {

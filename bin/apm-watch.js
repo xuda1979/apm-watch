@@ -296,7 +296,16 @@ async function cmdOnce(args) {
     const timeoutAnno = r.kind === 'http' || r.kind === 'tls'
       ? (r.timeoutMs != null ? ` timeout ${r.timeoutMs}ms` : '')
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}`);
+    // the apm thresholds the run was judged against ride the human row like the
+    // web /api/states rows + once --json + export JSON blocks (inc 68 parity):
+    // stamped onto each runApmCheck result (errorRateThreshold always-resolved
+    // to the 0.05 default, latencyThresholdMs null when unconfigured — matching
+    // onceJsonRow's error_rate_threshold / latency_threshold_ms). Same
+    // ` errThr N%` / ` slow thr Nms` format the TUI apm-history section uses.
+    const apmAnno = r.kind === 'apm'
+      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}`
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${apmAnno}`);
   }
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst

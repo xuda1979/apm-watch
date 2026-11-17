@@ -65,6 +65,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   const cfg2 = {
     http: [{ name: 'api', latencyThresholdMs: 200, timeoutMs: 3000, assert: { statusCode: 201, bodyIncludes: 'welcome' } }],
     tls: [{ name: 'api', warnDaysBefore: 14, timeoutMs: 4000 }],
+    apm: { errorRateThreshold: 0.08, latencyThresholdMs: 400 },
   };
   const out2 = exportStatus(store, cfg2);
   const api2 = out2.targets.find((t) => t.target === 'api');
@@ -74,6 +75,12 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api2.http.body_includes, 'welcome', 'configured assert body marker surfaces on the export snapshot');
   assert.equal(api2.tls.warn_days_before, 14, 'configured tls warn-days threshold surfaces on the export snapshot');
   assert.equal(api2.tls.timeout_ms, 4000, 'configured tls cert-fetch timeout surfaces on the export snapshot');
+  assert.equal(api2.apm.error_rate_threshold, 0.08, 'configured apm error-rate threshold surfaces on the export snapshot');
+  assert.equal(api2.apm.latency_threshold_ms, 400, 'configured apm slow-latency threshold surfaces on the export snapshot');
+  // the judged-against thresholds also annotate the rendered status-page apm row
+  // (web table + TUI + once parity, inc 68): ` errThr 8.0%` / ` slow thr 400ms`
+  // append to the detail exactly like the machine apm block carries them
+  assert.match(renderStatusPage(out2), /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms/, 'judged-against apm thresholds annotate the export page apm row');
   assert.deepEqual(out2.http.latencyThresholds, { api: 200 }, 'mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertStatusCodes, { api: 201 }, 'assert status mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertBodyIncludes, { api: 'welcome' }, 'assert body mirror block matches the per-target resolved map');
