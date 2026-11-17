@@ -225,7 +225,15 @@ async function cmdOnce(args) {
     const tls = r.kind === 'tls'
       ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}`
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${tls}`);
+    // http rows whose detail prose carries no timing figure (assert/body
+    // mismatches, network errors — unlike `HTTP 200 in Nms`, `slow: Nms >`,
+    // `timeout after Nms`) gain the numeric latency as the tui/web/export
+    // latency columns always surface it (inc-55 parity). Guarded on null so
+    // hypothetical latency-less rows keep the compact shape.
+    const latency = r.kind === 'http' && r.latencyMs != null && !/ms/.test(r.detail ?? '')
+      ? ` · ${r.latencyMs.toFixed(0)}ms`
+      : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${tls}`);
   }
 }
 

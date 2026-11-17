@@ -355,6 +355,10 @@ test('cli: once exits 2 when a check errors (asserted status mismatch)', async (
   // the failing check's real numeric code rides the row (inc-52 tui parity), so
   // the mismatch detail + code both surface for a cron/CI author
   assert.match(stdout, /GET 404 /, `numeric status-code surfaces on the error report\nstdout:\n${stdout}`);
+  // the mismatch detail has no timing prose, so the numeric latency rides the
+  // row like the tui/web/export latency columns always surface it (inc-55 parity)
+  assert.match(stdout, /expected status 200, got 404 · \d+ms/, `numeric latency surfaces when the detail lacks it\nstdout:\n${stdout}`);
+  assert.doesNotMatch(stdout, /expected status 200, got 404 · \d+ms · \d+ms/, 'latency is appended once');
 });
 
 test('cli: once --json reports error status_code and exit_code 2', async (t) => {
