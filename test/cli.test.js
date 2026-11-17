@@ -138,6 +138,9 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   assert.match(stdout, /ok-svc/);
   // the numeric http status-code rides the row like the tui ui row (inc-52 parity)
   assert.match(stdout, /GET 200 /, `numeric status-code surfaces on the human report\nstdout:\n${stdout}`);
+  // monitor self-health rides the human report like the once --json block and
+  // the TUI header / web / export meta lines (inc-66 parity)
+  assert.match(stdout, /health ok · up \d+s · last check \d+:\d+:\d+/, `self-health snapshot surfaces on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
@@ -444,6 +447,9 @@ test('cli: once exits 2 when a check errors (asserted status mismatch)', async (
   // onto the engine result and annotate the report even when the status check
   // failed first (the body probe still carries the 'missing' marker as judged)
   assert.match(stdout, /exp 200 body "missing"/, `assert criteria annotate the error row\nstdout:\n${stdout}`);
+  // monitor self-health reflects the failure path on the human report too
+  // (once --json parity, inc-66): the error check recorded a hard state
+  assert.match(stdout, /health error/, `worst status surfaces on the human health line\nstdout:\n${stdout}`);
 });
 
 test('cli: once --json reports error status_code and exit_code 2', async (t) => {

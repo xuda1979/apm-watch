@@ -283,6 +283,27 @@ async function cmdOnce(args) {
       : '';
     console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}`);
   }
+  // Monitor self-health rides the human report like the once --json block and
+  // the TUI header / web / export page meta lines (inc 66 parity): the worst
+  // status, up-duration and last-check time of exactly the checks that just
+  // ran. Null-gated like the JSON path — a fresh store (no check ran) prints
+  // nothing, so a cron/CI author sees the same snapshot every other face
+  // shows when there is one.
+  if (health) {
+    const upMs = Math.max(0, health.lastCheckAt - (health.uptimeSince ?? health.lastCheckAt));
+    const when = new Date(health.lastCheckAt).toLocaleTimeString();
+    console.log(`health ${health.status || 'unknown'} · up ${fmtDuration(upMs)} · last check ${when}`);
+  }
+}
+
+function fmtDuration(ms) {
+  if (!Number.isFinite(ms)) return '—';
+  const sec = Math.max(0, Math.floor(ms / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ${sec % 60}s`;
+  const h = Math.floor(min / 60);
+  return `${h}h ${min % 60}m`;
 }
 
 // Severity rank across the ok/warn/error status set. warn is "soft" failure,
