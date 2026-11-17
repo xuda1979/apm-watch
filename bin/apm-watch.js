@@ -217,11 +217,15 @@ async function cmdOnce(args) {
   }
   for (const r of results) {
     const verb = r.method ? r.method + ' ' : '';
+    // numeric response code rides the row like the tui http row (inc-52
+    // parity): states without a code (network-error path) keep the compact
+    // `GET err:...` shape, so guard on null.
+    const code = r.statusCode != null ? r.statusCode + ' ' : '';
     // tls chain metadata, mirroring the tui row / web table & tooltip
     const tls = r.kind === 'tls'
       ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}`
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${r.detail}${tls}`);
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${tls}`);
   }
 }
 

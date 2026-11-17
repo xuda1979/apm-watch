@@ -127,6 +127,8 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   const { code, stdout } = await runOnce(cfg);
   assert.equal(code, 0, `stdout:\n${stdout}`);
   assert.match(stdout, /ok-svc/);
+  // the numeric http status-code rides the row like the tui ui row (inc-52 parity)
+  assert.match(stdout, /GET 200 /, `numeric status-code surfaces on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
@@ -350,6 +352,9 @@ test('cli: once exits 2 when a check errors (asserted status mismatch)', async (
   const { code, stdout } = await runOnce(cfg);
   assert.equal(code, 2, `stdout:\n${stdout}`);
   assert.match(stdout, /down-svc/);
+  // the failing check's real numeric code rides the row (inc-52 tui parity), so
+  // the mismatch detail + code both surface for a cron/CI author
+  assert.match(stdout, /GET 404 /, `numeric status-code surfaces on the error report\nstdout:\n${stdout}`);
 });
 
 test('cli: once --json reports error status_code and exit_code 2', async (t) => {
