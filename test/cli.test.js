@@ -145,6 +145,10 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   // monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export meta lines (inc-66 parity)
   assert.match(stdout, /health ok · up \d+s · last check \d+:\d+:\d+/, `self-health snapshot surfaces on the human report\nstdout:\n${stdout}`);
+  // the snapshot status-count summary rides the human report like the web
+  // pillbox / export pills / TUI header (inc 79 parity): the single all-ok
+  // result prints `ok 1 warn 0 err 0`
+  assert.match(stdout, /ok 1 warn 0 err 0/, `snapshot status-count summary surfaces on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
@@ -164,6 +168,10 @@ test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
   // row like the tui/web/export rows (inc 73 parity): stamped onto the engine
   // result by check-http.js finalize, so the warn line carries ` thr 1ms`
   assert.match(stdout, /slow-svc: .* thr 1ms/, `slow-latency threshold surfaces on the human report\nstdout:\n${stdout}`);
+  // the snapshot status-count summary rides the human report like the web
+  // pillbox / export pills / TUI header (inc 79 parity): the single warn
+  // result prints `ok 0 warn 1 err 0`
+  assert.match(stdout, /ok 0 warn 1 err 0/, `snapshot status-count summary surfaces on the warn human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once accepts an apm-only config and exits 0', async (t) => {
@@ -303,6 +311,11 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(ok.uptime_ms.down_ms, 0, 'all-ok history yields zero downtime');
   assert.equal(ok.uptime_ms.up_ms, ok.uptime_ms.total_ms, 'up duration covers the whole window');
   assert.equal(typeof ok.uptime_ms.total_ms, 'number', 'total duration surfaces as a number');
+  // the snapshot status-count summary rides the once --json document like the
+  // web /api/states summary block + export JSON summary (inc 79 parity): the
+  // mixed ok/warn snapshot resolves warn overall with a per-bin distribution
+  assert.equal(doc.summary.overall, 'warn', 'the worst status of the mixed snapshot surfaces in the summary block');
+  assert.deepEqual(doc.summary.counts, { ok: 1, warn: 1, error: 0, unknown: 0 }, 'the status distribution over the just-run results surfaces in the summary block');
 });
 
 test('cli: once --json reports the configured http verb (POST) per check', async (t) => {
@@ -509,6 +522,11 @@ test('cli: once --json reports error status_code and exit_code 2', async (t) => 
   assert.equal(down.status, 'error');
   assert.equal(down.status_code, 404, 'numeric status_code survives in error results');
   assert.match(down.detail, /expected status 200, got 404/);
+  // the snapshot status-count summary rides the once --json document like the
+  // web /api/states summary block + export JSON summary (inc 79 parity): the
+  // single error result drives an error overall and a 1-count error bin
+  assert.equal(doc.summary.overall, 'error', 'the worst status of the snapshot surfaces in the summary block');
+  assert.deepEqual(doc.summary.counts, { ok: 0, warn: 0, error: 1, unknown: 0 }, 'the status distribution over the just-run results surfaces in the summary block');
 });
 
 test('cli: export prints a parseable status snapshot to stdout', async (t) => {

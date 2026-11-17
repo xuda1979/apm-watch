@@ -502,6 +502,9 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   assert.match(out, /up 2m ago/);
   assert.match(out, /monitor warn/);
   assert.match(out, /last check \d+/);
+  // the snapshot status-count summary rides the header like the web pillbox /
+  // export pills / once report (inc 79 parity): the single ok http snapshot
+  assert.match(out, /ok 1 warn 0 err 0/, 'header surfaces the parked-snapshot status counts');
 });
 
 test('ui: series are kept per target so multi-endpoint charts stay readable', async (t) => {

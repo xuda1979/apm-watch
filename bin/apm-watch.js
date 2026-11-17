@@ -11,7 +11,7 @@ import { Engine, retentionDays } from '../lib/engine.js';
 import { createUiServer } from '../lib/ui-server.js';
 import { Tui } from '../lib/ui-tui.js';
 import { startDemoAgent } from '../lib/demo-agent.js';
-import { exportStatus, renderStatusPage } from '../lib/export.js';
+import { exportStatus, renderStatusPage, aggStatus, countStatuses } from '../lib/export.js';
 import { availability } from '../lib/availability.js';
 
 const VERSION = '1.0.0';
@@ -294,6 +294,11 @@ async function cmdOnce(args) {
       ui: { historySeconds: uiHistorySeconds(config) },
       health,
       events,
+      // the snapshot status-count summary rides the once --json document like
+      // the web /api/states summary block and export JSON summary (inc 79
+      // parity): the worst status plus the ok/warn/error/unknown distribution
+      // of exactly the results that just ran.
+      summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)) },
       results: results.map(onceJsonRow),
     }, null, 2));
     return;
@@ -386,6 +391,11 @@ async function cmdOnce(args) {
     const portAnno = r.kind === 'tls' && r.port != null ? ` port ${r.port}` : '';
     console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${thrAnno}${warnAnno}${portAnno}${apmAnno}`);
   }
+  // Snapshot status-count summary rides the human report like the web pillbox,
+  // export page pills / JSON summary, once --json summary block and TUI header
+  // (inc 79 parity): `ok N warn N err N` of exactly the checks that just ran.
+  const counts = countStatuses(results.map((r) => r.status));
+  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error}`);
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
   // status, up-duration and last-check time of exactly the checks that just
