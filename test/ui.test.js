@@ -52,6 +52,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // refresh() targets the meta <p> by id, not the <meta charset> tag, so the
   // status line actually updates instead of forever showing "loading…"
   assert.match(html, /\$\('#meta'\)\.textContent = 'updated '/);
+  // the meta line surfaces the monitor's self-health status word like the TUI
+  // (`monitor <status>`), export page (`monitor ${status}`) and once report
+  // (`health <status>`): /api/states sends health.status, the meta line used
+  // to drop it (inc 70 parity)
+  assert.match(html, /data\.health\.status/);
   // the browser-side table renderers surface tls chain metadata (leaf subject,
   // broken-chain marker, and per-cert rows in a hover tooltip)
   assert.match(html, /s\.kind === 'tls'/);
