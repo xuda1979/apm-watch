@@ -87,7 +87,12 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // the judged-against thresholds also annotate the rendered status-page apm row
   // (web table + TUI + once parity, inc 68): ` errThr 8.0%` / ` slow thr 400ms`
   // append to the detail exactly like the machine apm block carries them
-  assert.match(renderStatusPage(out2), /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms/, 'judged-against apm thresholds annotate the export page apm row');
+  const html2 = renderStatusPage(out2);
+  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) errThr 8\.0% slow thr 400ms/, 'judged-against apm thresholds annotate the export page apm row');
+  // the per-probe slow-latency threshold rides the http row too (inc 73 parity):
+  // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
+  // after the resolved cadence, exactly like the JSON http block carries it
+  assert.match(html2, /HTTP 200 · POST 200 · 100% uptime exp 201 body &quot;welcome&quot; · timeout 3000ms · every 1m · thr 200ms/, 'configured slow-latency threshold annotates the export page http row');
   assert.deepEqual(out2.http.latencyThresholds, { api: 200 }, 'mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertStatusCodes, { api: 201 }, 'assert status mirror block matches the per-target resolved map');
   assert.deepEqual(out2.http.assertBodyIncludes, { api: 'welcome' }, 'assert body mirror block matches the per-target resolved map');

@@ -336,7 +336,13 @@ async function cmdOnce(args) {
     const intervalAnno = r.kind === 'http' || r.kind === 'tls'
       ? (r.intervalSeconds != null ? ` every ${fmtInterval(r.intervalSeconds)}` : '')
       : '';
-    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${apmAnno}`);
+    // the per-probe slow-latency threshold whose exceedance demotes ok->warn
+    // rides the human row like the tui/web/export rows (inc 73 parity): stamped
+    // onto each engine result by check-http.js finalize (latencyThresholdMs), so
+    // this reads straight off the result — null-gated, so targets without a
+    // latency threshold keep the bare row and the apm row keeps its slow thr anno.
+    const thrAnno = r.kind === 'http' && r.latencyThresholdMs != null ? ` thr ${r.latencyThresholdMs}ms` : '';
+    console.log(`${emoji(r.status)} ${r.kind} ${r.target}: ${verb}${code}${r.detail}${latency}${uptime}${tls}${assertAnno}${timeoutAnno}${intervalAnno}${thrAnno}${apmAnno}`);
   }
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst

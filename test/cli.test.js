@@ -156,6 +156,10 @@ test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
   const { code, stdout } = await runOnce(cfg);
   assert.equal(code, 1, `stdout:\n${stdout}`);
   assert.match(stdout, /slow:/);
+  // the per-probe slow-latency threshold that demoted ok->warn rides the human
+  // row like the tui/web/export rows (inc 73 parity): stamped onto the engine
+  // result by check-http.js finalize, so the warn line carries ` thr 1ms`
+  assert.match(stdout, /slow-svc: .* thr 1ms/, `slow-latency threshold surfaces on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once accepts an apm-only config and exits 0', async (t) => {
