@@ -52,6 +52,32 @@ test('apm: span POST accepted by collector-attached server', async (t) => {
   assert.equal(sum.demo.p50, 42);
 });
 
+test('apm: malformed/empty span body degrades to a default span, never 500', async (t) => {
+  // Collector-intake crash-resistance parity (web 9d5bee7 / TUI 8d9e9e1 / export
+  // 069ce55 / scheduler task-guard): the intake guard try/catches the raw
+  // JSON.parse (apm.js:77) so a torn/garbage body records a degraded span and
+  // replies 204 — no raw SyntaxError can take the long-running collector down.
+  const { createServer } = await import('node:http');
+  const server = createServer();
+  const c = new ApmCollector({});
+  c.attach(server);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const port = server.address().port;
+  for (const body of ['this is { not json', '']) {
+    const res = await fetch(`http://127.0.0.1:${port}/apm/agent/trace`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+    assert.equal(res.status, 204, `degraded intake replies 204 for body ${JSON.stringify(body)}`);
+  }
+  const sum = c.summary();
+  assert.ok(sum.demo, 'degraded bodies still land in the default demo bucket');
+  assert.equal(sum.demo.samples, 2, 'both degraded bodies recorded a span');
+});
+
 test('apm: demo agent posts spans', async (t) => {
   const { createServer } = await import('node:http');
   const received = [];
