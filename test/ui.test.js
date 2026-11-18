@@ -43,6 +43,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cApmErr/);
   // the p50/p95 chart draws the configured slow-latency threshold marker
   assert.match(html, /yellow=slow threshold/);
+  // the status-code history chart draws the judged-against expected-status
+  // dashed reference (per-target, inc 87 parity): the browser legend names the
+  // dash, mirroring the TUI status-history ` exp N` annotation
+  assert.match(html, /dashed=expected status/);
   // status table shows a per-row kind field alongside target/status/latency/detail
   assert.match(html, /<th>target<\/th><th>status<\/th><th>kind<\/th><th>latency<\/th><th>detail<\/th>/);
   // status-code history chart section rendered alongside the latency chart
@@ -381,6 +385,10 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // status-code history section renders per http target
   assert.match(out, /── http status history ──/);
   assert.match(out, /api: ▁|api: ▂|api: ▃|api: █/);
+  // the judged-against expected status code rides the status-history sparkline
+  // (live-row ` exp N` + web dashboard dashed-reference parity, inc 87): the
+  // broken target's 200 lands on its history line, unconfigured api stays bare
+  assert.match(out, /broken: .* exp 200/);
   // tls remaining-days history renders as its own per-target sparkline block
   assert.match(out, /── tls remaining history ──/);
   assert.match(out, /api: █▁/); // remaining 15 -> 12 over two samples
