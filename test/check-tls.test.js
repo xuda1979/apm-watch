@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import net from 'node:net';
 import { inspectPemChain, remainingDays, fetchCertChain, netChainToReport } from '../lib/check-tls.js';
 import { startHttpsServer } from './helpers/fixtures.js';
 
@@ -88,4 +89,47 @@ test('tls: fetchCertChain against real TLS server gives chain', async (t) => {
   // leaf subject rides the report like inspectPemChain returns it
   assert.equal(rep.validChain, true, 'single self-signed leaf is a valid chain on the network path');
   assert.equal(rep.leafSubject, 'CN=fixture.test', 'leaf subject rides the network report like the pem path');
+});
+
+test('tls: fetchCertChain to a refused port rejects with ECONNREFUSED', async (t) => {
+  // Runtime edge-path coverage: the socket 'error' handler (check-tls.js:72-77)
+  // must surface the raw connect code instead of swallowing it as a TLS error.
+  const sink = net.createServer();
+  await new Promise((r) => sink.listen(0, '127.0.0.1', r));
+  const { port } = sink.address();
+  sink.close();
+  await assert.rejects(
+    fetchCertChain({ host: '127.0.0.1', port, timeoutMs: 2000 }),
+    (e) => e.code === 'ECONNREFUSED' && /cert fetch failed/.test(e.message),
+    'connection refused carries the ECONNREFUSED code'
+  );
+});
+
+test('tls: fetchCertChain to a stalling listener aborts on timeout', async (t) => {
+  // Runtime edge-path coverage: a server that accepts the TCP connection but
+  // never completes the TLS handshake must be aborted by the socket timeout
+  // (check-tls.js:68-70) instead of hanging forever.
+  let conn;
+  const sink = net.createServer((c) => { conn = c; c.on('error', () => {}); /* accept, never handshake */ });
+  await new Promise((r) => sink.listen(0, '127.0.0.1', r));
+  // server.close() alone waits for the never-handshaken connection to drain;
+  // destroy it first so the after-hook always settles (probe showed close() hangs).
+  t.after(() => new Promise((resolve) => {
+    if (conn) conn.destroy();
+    sink.close(resolve);
+  }));
+  const { port } = sink.address();
+  await assert.rejects(
+    fetchCertChain({ host: '127.0.0.1', port, timeoutMs: 300 }),
+    (e) => /timeout/.test(e.message),
+    'stalled handshake aborts with a timeout error'
+  );
+});
+
+test('tls: malformed PEM block degrades to "no certificates found"', () => {
+  // toCert (check-tls.js:26-29) catches X509Certificate construction failures,
+  // so a PEM block that is structurally present but not a real DER cert must
+  // yield the curated message, never a raw construction error.
+  const bad = '-----BEGIN CERTIFICATE-----\nbm90IGEgY2VydA==\n-----END CERTIFICATE-----\n';
+  assert.throws(() => inspectPemChain(bad), /no certificates found in PEM content/);
 });
