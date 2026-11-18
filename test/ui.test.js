@@ -223,6 +223,9 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(data.summary.counts.ok, 2);
   assert.equal(data.summary.counts.warn, 1);
   assert.equal(data.summary.counts.error, 0);
+  // the snapshot-update timestamp rides the summary block (inc 81 parity —
+  // the once --json and export JSON summaries carry the same field)
+  assert.ok(Number.isFinite(data.summary.updated_at), 'the web api summary block carries the snapshot-update timestamp');
 
   // time-weighted availability per http target over the history window
   assert.ok(data.availability);

@@ -139,8 +139,7 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   }));
   const { code, stdout } = await runOnce(cfg);
   assert.equal(code, 0, `stdout:\n${stdout}`);
-  assert.match(stdout, /ok-svc/);
-  // the numeric http status-code rides the row like the tui ui row (inc-52 parity)
+  assert.match(stdout, /ok-svc/);  // the numeric http status-code rides the row like the tui ui row (inc-52 parity)
   assert.match(stdout, /GET 200 /, `numeric status-code surfaces on the human report\nstdout:\n${stdout}`);
   // monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export meta lines (inc-66 parity)
@@ -149,6 +148,9 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   // pillbox / export pills / TUI header (inc 79 parity): the single all-ok
   // result prints `ok 1 warn 0 err 0`
   assert.match(stdout, /ok 1 warn 0 err 0/, `snapshot status-count summary surfaces on the human report\nstdout:\n${stdout}`);
+  // the snapshot-update time rides the summary line like the web meta `updated`
+  // and export page `generated` (inc 81 parity)
+  assert.match(stdout, /ok 1 warn 0 err 0 · updated \d+:\d+:\d+/, `snapshot-update time surfaces on the human report\nstdout:\n${stdout}`);
   // the down-time window rides the uptime suffix like the tui/web/export rows
   // (inc 80 parity): the live ok snapshot owns the whole history window, so the
   // breakdown renders ` (down 0s)` after the pct
@@ -320,6 +322,10 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   // mixed ok/warn snapshot resolves warn overall with a per-bin distribution
   assert.equal(doc.summary.overall, 'warn', 'the worst status of the mixed snapshot surfaces in the summary block');
   assert.deepEqual(doc.summary.counts, { ok: 1, warn: 1, error: 0, unknown: 0 }, 'the status distribution over the just-run results surfaces in the summary block');
+  // the snapshot-update timestamp rides the summary block like the web
+  // /api/states summary (inc 81 parity): updated_at computed at snapshot time
+  assert.ok(Number.isFinite(doc.summary.updated_at), 'the summary block carries the snapshot-update timestamp');
+  assert.ok(doc.summary.updated_at >= ok.ts, 'summary update time is at/after the just-run result timestamps');
 });
 
 test('cli: once --json reports the configured http verb (POST) per check', async (t) => {

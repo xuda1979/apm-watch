@@ -297,8 +297,12 @@ async function cmdOnce(args) {
       // the snapshot status-count summary rides the once --json document like
       // the web /api/states summary block and export JSON summary (inc 79
       // parity): the worst status plus the ok/warn/error/unknown distribution
-      // of exactly the results that just ran.
-      summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)) },
+      // of exactly the results that just ran. The snapshot-update timestamp
+      // rides the summary block too (inc 81 parity): the web /api/states
+      // summary computes `updated_at: Date.now()` at response time, and the
+      // once document used to drop it, so a cron/CI consumer had no "generated
+      // when" field for the counts — now it mirrors the web block exactly.
+      summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)), updated_at: Date.now() },
       results: results.map(onceJsonRow),
     }, null, 2));
     return;
@@ -396,8 +400,12 @@ async function cmdOnce(args) {
   // Snapshot status-count summary rides the human report like the web pillbox,
   // export page pills / JSON summary, once --json summary block and TUI header
   // (inc 79 parity): `ok N warn N err N` of exactly the checks that just ran.
+  // The snapshot-update time rides the summary line like the web meta `updated`
+  // and export page `generated` (inc 81 parity): `ok 1 warn 0 err 0 · updated
+  // 12:34:56` — the web /api/states summary carries updated_at while the once
+  // human report used to carry no "generated when" for the counts.
   const counts = countStatuses(results.map((r) => r.status));
-  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error}`);
+  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error} · updated ${new Date().toLocaleTimeString()}`);
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
   // status, up-duration and last-check time of exactly the checks that just

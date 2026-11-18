@@ -135,6 +135,10 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(out.summary.counts.warn, 1);
   assert.equal(out.summary.counts.error, 1);
   assert.equal(out.generated_at, new Date(out.generated_ts).toISOString());
+  // the snapshot-update timestamp rides the summary block like the web
+  // /api/states summary (inc 81 parity): same `now` the top-level
+  // generated_ts/generated_at pair is computed from
+  assert.equal(out.summary.updated_at, out.generated_ts, 'the summary block carries the same snapshot-update timestamp as the top-level generated_ts');
   // the apm error-rate threshold the summary is judged against (web api parity)
   assert.equal(out.apm.errorRateThreshold, 0.05);
   // unconfigured slow-latency threshold is null, not dropped (web api parity)
