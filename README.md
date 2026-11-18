@@ -4,8 +4,8 @@
 APM（请求延迟/错误率），全部本地运行 —— SQLite 存储、终端 TUI 或 Web 单页
 实时状态与历史曲线、桌面通知 + 可选 webhook/邮件告警。
 
-Node v22.5+（零运行时依赖，仅用一个内置模块：`node:sqlite` / `node:crypto` /
-`node:tls`）。
+Node v22.5+（零运行时依赖，仅使用 Node 内置模块：
+`node:sqlite` / `node:http` / `node:crypto` / `node:tls` 等）。
 
 ## 功能
 
