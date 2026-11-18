@@ -181,6 +181,11 @@ async function cmdRun(args) {
       // blocks carry — states rows have no window column, so the TUI must
       // re-resolve from config.
       apmWindowMs: config.apm?.windowMs ?? 60_000,
+      // the store retention window rides the TUI header like every other face
+      // (web meta `keep Nd`, export page `keep Nd`, once report `keep Nd`,
+      // inc 83): config-global, resolved from the same canonical engine
+      // retentionDays resolver the JSON faces carry.
+      retentionDays: retentionDays(config?.store),
       onExit: shutdown,
     });
     tui.start();
@@ -409,7 +414,7 @@ async function cmdOnce(args) {
   // 12:34:56` — the web /api/states summary carries updated_at while the once
   // human report used to carry no "generated when" for the counts.
   const counts = countStatuses(results.map((r) => r.status));
-  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error} · updated ${new Date().toLocaleTimeString()}`);
+  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error} · updated ${new Date().toLocaleTimeString()} · keep ${retentionDays(config?.store)}d`);
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
   // status, up-duration and last-check time of exactly the checks that just

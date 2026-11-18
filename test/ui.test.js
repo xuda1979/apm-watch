@@ -57,6 +57,12 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // (`health <status>`): /api/states sends health.status, the meta line used
   // to drop it (inc 70 parity)
   assert.match(html, /data\.health\.status/);
+  // the store retention window rides the meta line like the TUI `keep Nd`,
+  // export page `keep Nd` and once report (inc 83 parity): /api/states sends
+  // store.retentionDays (14 in this server config), the meta line used to drop
+  // it — the browser renders ` · keep 14d` from it
+  assert.match(html, /data\.store\.retentionDays/);
+  assert.match(html, /· keep ' \+ data\.store\.retentionDays \+ 'd'/);
   // the browser-side table renderers surface tls chain metadata (leaf subject,
   // broken-chain marker, and per-cert rows in a hover tooltip)
   assert.match(html, /s\.kind === 'tls'/);
@@ -513,6 +519,15 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   // the snapshot status-count summary rides the header like the web pillbox /
   // export pills / once report (inc 79 parity): the single ok http snapshot
   assert.match(out, /ok 1 warn 0 err 0/, 'header surfaces the parked-snapshot status counts');
+  // the store retention window rides the header like the web meta `keep Nd`,
+  // export page `keep Nd` and once report (inc 83 parity): the constructor
+  // null-gates the annotation, so a bare Tui stays without it
+  assert.doesNotMatch(out, /keep \d+d/, 'bare Tui header stays without a retention annotation');
+  const tuiCfg = new Tui({ store, intervalMs: 1000, retentionDays: 14 });
+  out = '';
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tuiCfg.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /keep 14d/, 'configured store retention window surfaces on the TUI header');
 });
 
 test('ui: series are kept per target so multi-endpoint charts stay readable', async (t) => {

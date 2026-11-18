@@ -292,6 +292,10 @@ test('export: health block surfaces monitor uptime/lastCheck in json + html', ()
   assert.match(html, /monitor warn/);
   assert.match(html, /up 3m 20s/);   // lastCheck - uptimeSince = 200000 ms
   assert.match(html, /last check /);
+  // the store retention window rides the page meta like the web meta `keep Nd`,
+  // TUI header and once report (inc 83 parity): the unconfigured store defaults
+  // to the engine's canonical 7 days
+  assert.match(html, /keep 7d/, 'store retention window surfaces on the export page meta');
   setTimeout(store.close, 0);
 });
 
