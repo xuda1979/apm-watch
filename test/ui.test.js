@@ -706,3 +706,45 @@ test('ui: tui honors the configured history window for its sparklines', async (t
   const outLong = render(new Tui({ store, intervalMs: 1000 }));
   assert.match(outLong, /api: ▁█/);
 });
+
+test('ui: a corrupted chain_json store row degrades to null instead of crashing the web api', async (t) => {
+  const store = new Store(':memory:');
+  // saveState only ever writes JSON.stringify(chain) valid JSON, so corrupt the
+  // column directly like a torn on-disk write could
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', chain: [{ subject: '/CN=fixture.test', daysRemaining: 12 }], validChain: true, leafSubject: '/CN=fixture.test' });
+  store.db.prepare("UPDATE states SET chain_json='this is { not json' WHERE kind='tls'").run();
+  t.after(() => store.close());
+
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  // the /api/states document survives: the row's chain degrades to null (ui-tui
+  // row-renderer parity) instead of an uncaught SyntaxError killing the process
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  assert.equal(res.status, 200);
+  const data = await res.json();
+  const tlsRow = data.states.find((s) => s.target === 'api' && s.kind === 'tls');
+  assert.equal(tlsRow.chain, null, 'malformed chain_json renders as a null chain, not a crash');
+  assert.equal(tlsRow.leaf_subject, '/CN=fixture.test');
+});
+
+test('ui: an unexpected throw inside a route returns a readable 500 and leaves the server alive', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  t.after(() => store.close());
+  // simulate a corrupted read / future route bug
+  store.latestStates = () => { throw new Error('boom: corrupt store read'); };
+
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  assert.equal(res.status, 500, 'a throw inside a route degrades to a 500');
+  assert.equal(await res.text(), 'internal error');
+
+  // the process did not crash: the server still serves the next request
+  const page = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(page.status, 200);
+});
