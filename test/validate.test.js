@@ -165,6 +165,23 @@ test('validate: notifications.repeatIntervalSeconds typos that would corrupt the
       `ui.historySeconds=${JSON.stringify(v)} must be accepted`,
     );
   }
+  // ui.mode selects the interface bin/apm-watch.js brings up (same grammar as
+  // the --ui flag); a typo'd mode would silently run the monitor with no UI at
+  // all since neither cmdRun branch fires.
+  for (const v of ['webui', 'Text', '', 1, 'bogus']) {
+    assert.match(
+      validateConfig({ http: [], tls: [], ui: { mode: v } }).join('\n'),
+      /config\.ui\.mode must be "web" or "tui"/,
+      `ui.mode=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  for (const v of ['web', 'tui']) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], ui: { mode: v } }),
+      [],
+      `ui.mode=${JSON.stringify(v)} must be accepted`,
+    );
+  }
 });
 
 test('validate: non-object section is caught', () => {
