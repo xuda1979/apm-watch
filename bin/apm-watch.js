@@ -694,7 +694,10 @@ async function cmdServe(args) {
 
 if (IS_MAIN) {
   main().catch((err) => {
-    console.error('[apm-watch] fatal:', err);
+    // A one-line message keeps cron/CI stderr clean: every error that reaches
+    // here already explains itself (config read/parse/validation, file write,
+    // port bind), so a raw stack dump only buries the operator-facing line.
+    console.error('[apm-watch] fatal:', err?.message ?? err);
     process.exit(1);
   });
 }

@@ -697,6 +697,19 @@ test('cli: export --out file.html writes a self-contained status page', async (t
   assert.match(html, /apm-watch v1\.0\.0/);
 });
 
+test('cli: top-level fatal prints a one-line message, no raw stack dump', async () => {
+  // `export --out /nonexistent-dir/x.json` and other boot-time failures must
+  // surface a readable one-line error (cron/CI clean stderr), not a full
+  // `[apm-watch] fatal: Error: ... at ...` stack dump.
+  const child = spawn(process.execPath, [BIN, 'export', '--out', path.join(tmpdir(), 'no-such-dir', 'x.json')], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const code = await new Promise((res) => child.on('close', res));
+  assert.equal(code, 1, `expects exit 1\nstderr:\n${stderr}`);
+  assert.match(stderr, /\[apm-watch\] fatal: ENOENT/, 'one-line message names the failure');
+  assert.doesNotMatch(stderr, /at (writeFileSync|cmdExport|main)/, 'no raw stack trace dumped');
+});
+
 test('cli: serve boots the web UI over an existing store and serves states + page', async (t) => {
   const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
   const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
