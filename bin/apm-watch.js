@@ -75,6 +75,11 @@ function flagErrors(args) {
   if (args.interval !== undefined && (!Number.isInteger(args.interval) || args.interval < 1)) {
     errs.push(`--interval expects a positive integer (ms), got ${JSON.stringify(args.interval)}`);
   }
+  // A typo'd --ui must not silently run the monitor with no UI at all (neither
+  // cmdRun branch fires) — fail fast so the operator sees the mistake.
+  if (args.ui !== undefined && !['web', 'tui'].includes(args.ui)) {
+    errs.push(`--ui expects "web" or "tui", got ${JSON.stringify(args.ui)}`);
+  }
   return errs;
 }
 

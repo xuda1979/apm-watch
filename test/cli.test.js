@@ -944,6 +944,7 @@ test('cli: malformed numeric flags fail fast with a readable message', async (t)
     ['serve', '--port', '-5'],
     ['serve', '--port', '99999'],
     ['run', '--ui-port', 'abc'],
+    ['run', '--ui', 'bogus'],
     ['demo', '--interval', '200ms'],
   ]) {
     const child = spawn(process.execPath, [BIN, ...argv], { cwd: path.dirname(BIN) });
