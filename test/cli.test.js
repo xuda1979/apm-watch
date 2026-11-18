@@ -960,6 +960,11 @@ test('cli: malformed numeric flags fail fast with a readable message', async (t)
     ['run', '--ui-port', 'abc'],
     ['run', '--ui', 'bogus'],
     ['demo', '--interval', '200ms'],
+    // a value above the timers max (2^31-1 ms) would clamp to 1 ms in Node's
+    // setTimeout/setInterval and fire a raw TimeoutOverflowWarning stack while
+    // silently spamming the collector at 1ms cadence — must fail fast too
+    ['demo', '--interval', '2147483648'],
+
     ['demo', '--collect-addr', 'not a url'],
     ['demo', '--collect-addr', 'ftp://127.0.0.1:21'],
     // a trailing value-consuming flag (no following token) is a typo'd command

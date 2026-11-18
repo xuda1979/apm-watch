@@ -86,8 +86,12 @@ function flagErrors(args) {
       errs.push(`${name} expects an integer port in [0, 65535], got ${JSON.stringify(v)}`);
     }
   }
-  if (args.interval !== undefined && (!Number.isInteger(args.interval) || args.interval < 1)) {
-    errs.push(`--interval expects a positive integer (ms), got ${JSON.stringify(args.interval)}`);
+  // Node's timers clamp durations over 2^31-1 ms (≈24.8 days) to 1 ms and emit
+  // a raw TimeoutOverflowWarning — a typo'd --interval would otherwise silently
+  // spam the collector at 1ms cadence with a cron/CI-visible warning stack.
+  const MAX_TIMER_MS = 2 ** 31 - 1;
+  if (args.interval !== undefined && (!Number.isInteger(args.interval) || args.interval < 1 || args.interval > MAX_TIMER_MS)) {
+    errs.push(`--interval expects a positive integer (ms) up to ${MAX_TIMER_MS}, got ${JSON.stringify(args.interval)}`);
   }
   // A typo'd --ui must not silently run the monitor with no UI at all (neither
   // cmdRun branch fires) — fail fast so the operator sees the mistake.
