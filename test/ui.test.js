@@ -67,6 +67,14 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // it — the browser renders ` · keep 14d` from it
   assert.match(html, /data\.store\.retentionDays/);
   assert.match(html, /· keep ' \+ data\.store\.retentionDays \+ 'd'/);
+  // the notification channel-state rides the meta line like the TUI `notif
+  // ...`, export page and once report (inc 88 parity): /api/states sends the
+  // resolved per-channel arming gates (desktop on by default, webhook+email on
+  // in this server config), the meta line used to drop them — the browser
+  // renders ` · notif desktop webhook email · repeat <fmt>` from it
+  assert.match(html, /data\.notifications\.desktop/);
+  assert.match(html, /notif ' \+ \[data\.notifications\.desktop/);
+  assert.match(html, /fmtInterval\(data\.notifications\.repeatIntervalSeconds\)/);
   // the browser-side table renderers surface tls chain metadata (leaf subject,
   // broken-chain marker, and per-cert rows in a hover tooltip)
   assert.match(html, /s\.kind === 'tls'/);
@@ -557,6 +565,16 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   process.stdout.write = (s) => { out += s; return true; };
   try { tuiCfg.render(); } finally { process.stdout.write = orig; }
   assert.match(out, /keep 14d/, 'configured store retention window surfaces on the TUI header');
+  // the notification channel-state rides the header like the web meta `notif
+  // ...`, export page and once report (inc 88 parity): the constructor
+  // null-gates the annotation, so a bare Tui stays without it, and a configured
+  // one surfaces the armed channels + repeat-interval
+  assert.doesNotMatch(out, /notif /, 'bare Tui header stays without a notification annotation');
+  const tuiNotif = new Tui({ store, intervalMs: 1000, notifications: { repeatIntervalSeconds: 7200, desktop: true, webhook: true, email: false } });
+  out = '';
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tuiNotif.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /notif desktop webhook repeat 2h 0m/, 'configured notification channel-state surfaces on the TUI header');
 });
 
 test('ui: series are kept per target so multi-endpoint charts stay readable', async (t) => {

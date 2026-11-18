@@ -158,6 +158,12 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   // Nd`, export page `keep Nd` and TUI header (inc 83 parity): the unconfigured
   // store defaults to the engine's canonical 7 days
   assert.match(stdout, /ok 1 warn 0 err 0 · updated .* · keep 7d/, `store retention window surfaces on the human report\nstdout:\n${stdout}`);
+  // the notification channel-state rides the human report like the once --json /
+  // web /api/states / export JSON `notifications` block (inc 88 parity): the
+  // unconfigured channels resolve to the canonical defaults (desktop on,
+  // webhook/email off, repeat 3600s -> `1h 0m` under the shared fmtInterval
+  // short-form) exactly like the JSON envelope every other face carries
+  assert.match(stdout, /notif desktop · repeat 1h 0m/, `notification channel-state surfaces on the human report\nstdout:\n${stdout}`);
   // the down-time window rides the uptime suffix like the tui/web/export rows
   // (inc 80 parity): the live ok snapshot owns the whole history window, so the
   // breakdown renders ` (down 0s)` after the pct. The availability snapshot

@@ -186,6 +186,12 @@ async function cmdRun(args) {
       // inc 83): config-global, resolved from the same canonical engine
       // retentionDays resolver the JSON faces carry.
       retentionDays: retentionDays(config?.store),
+      // the notification channel-state rides the TUI header like every other
+      // face (once --json / web /api/states / export JSON `notifications` block,
+      // inc 88 parity): repeat-interval + resolved per-channel gates threaded
+      // through the same canonical config resolvers the JSON faces carry, so a
+      // terminal operator sees which alert channels are armed at a glance.
+      notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
       onExit: shutdown,
     });
     tui.start();
@@ -438,6 +444,13 @@ async function cmdOnce(args) {
     const when = new Date(health.lastCheckAt).toLocaleTimeString();
     console.log(`health ${health.status || 'unknown'} · up ${fmtDuration(upMs)} · last check ${when}`);
   }
+  // The notification channel-state rides the human report like the once --json
+  // / web /api/states / export JSON `notifications` block (inc 88 parity): which
+  // alert channels are armed plus the dedup repeat-interval, resolved by the
+  // same canonical config resolvers every other face carries, so a cron/CI
+  // author sees the same alert-arming summary the JSON document shows.
+  const notifCh = [notificationsDesktop(config) ? 'desktop' : null, notificationsWebhookEnabled(config) ? 'webhook' : null, notificationsEmailEnabled(config) ? 'email' : null].filter(Boolean);
+  console.log(`notif ${notifCh.join(' ') || 'none'} · repeat ${fmtInterval(config.notifications?.repeatIntervalSeconds ?? 3600)}`);
 }
 
 function fmtDuration(ms) {

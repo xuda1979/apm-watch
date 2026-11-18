@@ -301,6 +301,12 @@ test('export: health block surfaces monitor uptime/lastCheck in json + html', ()
   // TUI header and once report (inc 83 parity): the unconfigured store defaults
   // to the engine's canonical 7 days
   assert.match(html, /keep 7d/, 'store retention window surfaces on the export page meta');
+  // the notification channel-state rides the page meta like the web meta `notif
+  // ...`, TUI header and once report (inc 88 parity): the unconfigured channels
+  // resolve to the canonical defaults (desktop on, webhook/email off, repeat
+  // 3600s -> `1h 0m` under the shared fmtInterval short-form)
+  assert.match(html, /notif desktop/, 'notification channel-state surfaces on the export page meta');
+  assert.match(html, /repeat 1h 0m/, 'default alert repeat-interval surfaces on the export page meta');
   setTimeout(store.close, 0);
 });
 
