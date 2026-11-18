@@ -350,6 +350,16 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(ok.uptime_ms.down_ms, 0, 'all-ok history yields zero downtime');
   assert.equal(ok.uptime_ms.up_ms, ok.uptime_ms.total_ms, 'up duration covers the whole window');
   assert.equal(typeof ok.uptime_ms.total_ms, 'number', 'total duration surfaces as a number');
+  // the per-target availability map rides the once --json envelope like the
+  // web /api/states `availability` block + the export JSON (inc 94 parity): one
+  // entry per http target this run checked, computed over the same window with
+  // the same endpoint bump as the rows — so map numbers equal the stamped row
+  // breakdown exactly
+  assert.ok(doc.availability, 'once --json surfaces the per-target availability map');
+  assert.equal(doc.availability['ok-svc'].pct, 100, 'the seeded + live all-ok window resolves 100% in the map');
+  assert.equal(doc.availability['ok-svc'].samples, 3, 'every stored + live snapshot counts toward the map entry');
+  assert.equal(doc.availability['ok-svc'].upMs, ok.uptime_ms.up_ms, 'map up-duration equals the stamped row breakdown');
+  assert.equal(doc.availability['slow-svc'].pct, 100, 'the single warn snapshot is up (only error is down) in the map');
   // the snapshot status-count summary rides the once --json document like the
   // web /api/states summary block + export JSON summary (inc 79 parity): the
   // mixed ok/warn snapshot resolves warn overall with a per-bin distribution

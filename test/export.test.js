@@ -63,6 +63,15 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(other.apm, null);
   // time-weighted availability: api was up for all 2000ms of history
   assert.equal(api.http.uptime_pct, 100);
+  // the per-target availability map rides the export JSON like the web
+  // /api/states `availability` block + once --json (inc 94 parity): one entry
+  // per http target, exactly equal to the row breakdown because both derive
+  // from the same per-target computation
+  assert.ok(out.availability, 'export JSON surfaces the per-target availability map');
+  assert.equal(out.availability['api'].pct, 100, 'the all-ok api window resolves 100% in the map');
+  assert.equal(out.availability['api'].samples, 2, 'both seeded api snapshots count toward the map entry');
+  assert.equal(out.availability['api'].upMs, api.http.uptime_ms.up_ms, 'map up-duration equals the stamped row breakdown');
+  assert.equal(out.availability['other'].pct, null, 'the single zero-width other row resolves null in the map');
   // configured thresholds/timeouts surface on the per-target blocks (once
   // --json / web /api/states parity): re-export against a config that actually
   // sets the http/tls knobs, resolved from the same per-target maps the

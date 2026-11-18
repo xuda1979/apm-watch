@@ -259,6 +259,13 @@ async function cmdOnce(args) {
   // exactly like export.js — pct null on a zero-width window, breakdown only
   // when the window has a positive span (totalMs > 0).
   const since = Date.now() - uiHistorySeconds(config) * 1000;
+  // The per-target availability map rides the cron/CI document exactly like the
+  // web /api/states `availability` block and the export JSON (inc 94 parity):
+  // one `{pct, upMs, downMs, totalMs, samples}` entry per http target this run
+  // checked, captured from the *same* per-row computation below so map values
+  // equal the stamped row breakdown exactly (recomputing with a fresh now
+  // would drift the window endpoint a tick and break the equality).
+  const availabilityMap = {};
   for (const r of results) {
     if (r.kind !== 'http') continue;
     const rows = store.history(r.target, 'http', since);
@@ -272,6 +279,7 @@ async function cmdOnce(args) {
     const lastTs = rows[rows.length - 1]?.ts;
     const nowTs = lastTs != null ? Math.max(Date.now(), lastTs + 1) : Date.now();
     const avail = availability(rows, nowTs);
+    availabilityMap[r.target] = avail;
     r.uptimePct = avail && avail.pct != null ? avail.pct : null;
     r.uptimeMs = avail && avail.totalMs > 0
       ? { up_ms: avail.upMs, down_ms: avail.downMs, total_ms: avail.totalMs, samples: avail.samples }
@@ -362,6 +370,7 @@ async function cmdOnce(args) {
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
       scheduler: schedulerIntervals(config),
       ui: { historySeconds: uiHistorySeconds(config) },
+      availability: availabilityMap,
       health,
       events,
       // the snapshot status-count summary rides the once --json document like
