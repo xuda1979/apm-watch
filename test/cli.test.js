@@ -142,6 +142,12 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   }));
   const { code, stdout } = await runOnce(cfg);
   assert.equal(code, 0, `stdout:\n${stdout}`);
+  // the product version rides the human report like the export page footer,
+  // web PAGE h1 and TUI header (inc 95 parity): the report used to drop it, so
+  // a cron/CI author grepping the output had no version string to pair with the
+  // block shapes — now the report opens with the same `apm-watch vX.Y.Z` the
+  // usage/--version paths print
+  assert.match(stdout, /^apm-watch v1\.0\.0$/m, `product version surfaces on the human report\nstdout:\n${stdout}`);
   assert.match(stdout, /ok-svc/);  // the numeric http status-code rides the row like the tui ui row (inc-52 parity)
   assert.match(stdout, /GET 200 /, `numeric status-code surfaces on the human report\nstdout:\n${stdout}`);
   // monitor self-health rides the human report like the once --json block and

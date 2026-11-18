@@ -41,6 +41,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.match(html, /cTls/);
   assert.match(html, /cApm/);
   assert.match(html, /cApmErr/);
+  // the product version rides the PAGE chrome like the /api/states JSON
+  // document and every other face (export page footer, TUI header, once
+  // report header, inc 95 parity): the h1 used to drop it, so a browser
+  // operator had no way to pair the page with the version that produced it
+  assert.match(html, /<h1>apm-watch v1\.0\.0<\/h1>/);
   // the p50/p95 chart draws the configured slow-latency threshold marker
   assert.match(html, /yellow=slow threshold/);
   // the status-code history chart draws the judged-against expected-status
@@ -569,6 +574,16 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   assert.match(out, /up 2m ago/);
   assert.match(out, /monitor warn/);
   assert.match(out, /last check \d+/);
+  // the product version rides the header line like the web PAGE h1, export
+  // page footer and once report header (inc 95 parity): the constructor
+  // null-gates the annotation, so a bare Tui stays without it, and a
+  // configured one surfaces the version string
+  assert.doesNotMatch(out, /apm-watch v\d/, 'bare Tui header stays without a version annotation');
+  const tuiVer = new Tui({ store, intervalMs: 1000, version: '9.9.9' });
+  out = '';
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tuiVer.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /apm-watch v9\.9\.9  up /, 'configured product version surfaces on the TUI header');
   // the snapshot status-count summary rides the header like the web pillbox /
   // export pills / once report (inc 79 parity): the single ok http snapshot
   assert.match(out, /ok 1 warn 0 err 0/, 'header surfaces the parked-snapshot status counts');

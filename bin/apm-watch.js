@@ -198,6 +198,11 @@ async function cmdRun(args) {
       // through the same canonical config resolvers the JSON faces carry, so a
       // terminal operator sees which alert channels are armed at a glance.
       notifications: { repeatIntervalSeconds: config.notifications?.repeatIntervalSeconds ?? 3600, desktop: notificationsDesktop(config), webhook: notificationsWebhookEnabled(config), email: notificationsEmailEnabled(config) },
+      // the product version rides the TUI header like the web PAGE h1, export
+      // page footer and once report header (inc 95 parity): threaded from the
+      // CLI's VERSION const, so the terminal operator sees the same version
+      // string every other face carries.
+      version: VERSION,
       onExit: shutdown,
     });
     tui.start();
@@ -387,6 +392,11 @@ async function cmdOnce(args) {
     }, null, 2));
     return;
   }
+  // the product version rides the human report like the export page footer,
+  // web PAGE h1 and TUI header (inc 95 parity): a cron/CI author grepping the
+  // report pairs the block shapes with the exact version that produced them —
+  // the same `apm-watch vX.Y.Z` string the usage/--version paths print.
+  console.log(`apm-watch v${VERSION}`);
   for (const r of results) {
     const verb = r.method ? r.method + ' ' : '';
     // numeric response code rides the row like the tui http row (inc-52
