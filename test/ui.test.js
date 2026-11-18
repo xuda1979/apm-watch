@@ -585,8 +585,9 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   try { tuiVer.render(); } finally { process.stdout.write = orig; }
   assert.match(out, /apm-watch v9\.9\.9  up /, 'configured product version surfaces on the TUI header');
   // the snapshot status-count summary rides the header like the web pillbox /
-  // export pills / once report (inc 79 parity): the single ok http snapshot
-  assert.match(out, /ok 1 warn 0 err 0/, 'header surfaces the parked-snapshot status counts');
+  // export pills / once report (inc 79 parity): the single ok http snapshot,
+  // with the overall worst-status word riding along (inc 96 parity)
+  assert.match(out, /ok 1 warn 0 err 0 · overall ok/, 'header surfaces the parked-snapshot status counts');
   // the store retention window rides the header like the web meta `keep Nd`,
   // export page `keep Nd` and once report (inc 83 parity): the constructor
   // null-gates the annotation, so a bare Tui stays without it

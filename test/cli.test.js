@@ -155,15 +155,16 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   assert.match(stdout, /health ok · up \d+s · last check \d+:\d+:\d+/, `self-health snapshot surfaces on the human report\nstdout:\n${stdout}`);
   // the snapshot status-count summary rides the human report like the web
   // pillbox / export pills / TUI header (inc 79 parity): the single all-ok
-  // result prints `ok 1 warn 0 err 0`
-  assert.match(stdout, /ok 1 warn 0 err 0/, `snapshot status-count summary surfaces on the human report\nstdout:\n${stdout}`);
+  // result prints `ok 1 warn 0 err 0` and the overall worst-status word rides
+  // along like the pillbox / json summary (inc 96 parity)
+  assert.match(stdout, /ok 1 warn 0 err 0 · overall ok/, `snapshot status-count summary surfaces on the human report\nstdout:\n${stdout}`);
   // the snapshot-update time rides the summary line like the web meta `updated`
   // and export page `generated` (inc 81 parity)
-  assert.match(stdout, /ok 1 warn 0 err 0 · updated \d+:\d+:\d+/, `snapshot-update time surfaces on the human report\nstdout:\n${stdout}`);
+  assert.match(stdout, /ok 1 warn 0 err 0 · overall ok · updated \d+:\d+:\d+/, `snapshot-update time surfaces on the human report\nstdout:\n${stdout}`);
   // the store retention window rides the summary line like the web meta `keep
   // Nd`, export page `keep Nd` and TUI header (inc 83 parity): the unconfigured
   // store defaults to the engine's canonical 7 days
-  assert.match(stdout, /ok 1 warn 0 err 0 · updated .* · keep 7d/, `store retention window surfaces on the human report\nstdout:\n${stdout}`);
+  assert.match(stdout, /ok 1 warn 0 err 0 · overall ok · updated .* · keep 7d/, `store retention window surfaces on the human report\nstdout:\n${stdout}`);
   // the notification channel-state rides the human report like the once --json /
   // web /api/states / export JSON `notifications` block (inc 88 parity): the
   // unconfigured channels resolve to the canonical defaults (desktop on,
@@ -205,8 +206,9 @@ test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
   assert.match(stdout, /slow-svc: .* thr 1ms/, `slow-latency threshold surfaces on the human report\nstdout:\n${stdout}`);
   // the snapshot status-count summary rides the human report like the web
   // pillbox / export pills / TUI header (inc 79 parity): the single warn
-  // result prints `ok 0 warn 1 err 0`
-  assert.match(stdout, /ok 0 warn 1 err 0/, `snapshot status-count summary surfaces on the warn human report\nstdout:\n${stdout}`);
+  // result prints `ok 0 warn 1 err 0` and the overall worst-status word rides
+  // along like the pillbox / json summary (inc 96 parity)
+  assert.match(stdout, /ok 0 warn 1 err 0 · overall warn/, `snapshot status-count summary surfaces on the warn human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once accepts an apm-only config and exits 0', async (t) => {

@@ -511,7 +511,10 @@ async function cmdOnce(args) {
   // 12:34:56` — the web /api/states summary carries updated_at while the once
   // human report used to carry no "generated when" for the counts.
   const counts = countStatuses(results.map((r) => r.status));
-  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error} · updated ${new Date().toLocaleTimeString()} · keep ${retentionDays(config?.store)}d`);
+  // the overall worst-status word rides the summary line like the web pillbox /
+  // export page pill / JSON `summary.overall` (inc 96 parity): aggStatus's
+  // error>warn>ok precedence over exactly the checks that just ran.
+  console.log(`ok ${counts.ok} warn ${counts.warn} err ${counts.error} · overall ${aggStatus(results.map((r) => r.status))} · updated ${new Date().toLocaleTimeString()} · keep ${retentionDays(config?.store)}d`);
   // Monitor self-health rides the human report like the once --json block and
   // the TUI header / web / export page meta lines (inc 66 parity): the worst
   // status, up-duration and last-check time of exactly the checks that just
