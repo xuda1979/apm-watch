@@ -337,6 +337,10 @@ async function cmdOnce(args) {
     'apm:errorRate': onceSeriesRows('apm:', onceApmNames, 'errorRate'),
   };
   if (args.json) {
+    // the generation instant is computed once so the top-level twins and the
+    // summary block timestamp are the same instant (the export JSON constraint,
+    // export.test.js — a consumer can diff generated_at against updated_at)
+    const docNow = Date.now();
     console.log(JSON.stringify({
       exit_code: process.exitCode,
       // the product version rides the cron/CI document like the export JSON
@@ -344,6 +348,13 @@ async function cmdOnce(args) {
       // faces used to drop it, so a cron/CI consumer had no version string to
       // pair with the block shapes it engineers against.
       apm_watch_version: VERSION,
+      // the generation-time twin rides the cron/CI document like the export
+      // JSON `generated_at`/`generated_ts` (inc 93 parity): the once --json
+      // and /api/states faces used to drop it, so a cron/CI consumer had no
+      // ISO/epoch pair for when the snapshot was generated. The summary
+      // block's snapshot-update timestamp is the same instant.
+      generated_at: new Date(docNow).toISOString(),
+      generated_ts: docNow,
       apm: { collect: config.apm?.collect === true, errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
       http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), assertStatusCodes: httpAssertStatusCodes(config), assertBodyIncludes: httpAssertBodyIncludes(config), intervalSeconds: httpIntervalSeconds(config) },
       tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), port: tlsPort(config), intervalSeconds: tlsIntervalSeconds(config) },
@@ -361,7 +372,7 @@ async function cmdOnce(args) {
       // summary computes `updated_at: Date.now()` at response time, and the
       // once document used to drop it, so a cron/CI consumer had no "generated
       // when" field for the counts — now it mirrors the web block exactly.
-      summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)), updated_at: Date.now() },
+      summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)), updated_at: docNow },
       series,
       results: results.map(onceJsonRow),
     }, null, 2));

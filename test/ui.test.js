@@ -149,6 +149,11 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // once --json `apm_watch_version` (inc 92 parity): a browser consumer keying
   // off the api can pair the snapshot with the version that produced it
   assert.equal(data.apm_watch_version, '1.0.0', 'the product version surfaces on the web api document');
+  // the generation-time twin rides the document like the export JSON
+  // `generated_at`/`generated_ts` (inc 93 parity): the summary block's
+  // snapshot-update timestamp is the same instant the twins are computed from
+  assert.equal(data.generated_at, new Date(data.generated_ts).toISOString(), 'the ISO twin renders the epoch twin as ISO');
+  assert.equal(data.summary.updated_at, data.generated_ts, 'the summary block carries the same snapshot-update timestamp as the top-level generated_ts');
   assert.ok(Array.isArray(data.states));
   assert.equal(data.states.length, 3);
   const apiHttp = data.states.find((s) => s.target === 'api' && s.kind === 'http');

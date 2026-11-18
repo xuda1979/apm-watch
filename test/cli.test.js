@@ -375,6 +375,11 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   // web /api/states `apm_watch_version` (inc 92 parity): the envelope carries
   // the exact version string the export face is asserted against
   assert.equal(doc.apm_watch_version, '1.0.0', 'the product version surfaces on the once --json document');
+  // the generation-time twin rides the cron/CI document like the export JSON
+  // `generated_at`/`generated_ts` (inc 93 parity): the summary block's
+  // snapshot-update timestamp is the same instant the twins are computed from
+  assert.equal(doc.generated_at, new Date(doc.generated_ts).toISOString(), 'the ISO twin renders the epoch twin as ISO');
+  assert.equal(doc.summary.updated_at, doc.generated_ts, 'the summary block carries the same snapshot-update timestamp as the top-level generated_ts');
   assert.deepEqual(doc.series['tls:remaining'], {}, 'no tls targets configured -> empty tls series map on once --json');
   assert.deepEqual(doc.series['apm:p50'], {}, 'no apm services -> empty p50 series map on once --json');
   assert.deepEqual(doc.series['apm:p95'], {}, 'no apm services -> empty p95 series map on once --json');
