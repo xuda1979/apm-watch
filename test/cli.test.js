@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -987,4 +988,23 @@ test('cli: malformed numeric flags fail fast with a readable message', async (t)
   });
   t.after(() => child.kill('SIGTERM'));
   assert.ok(port > 0, `port 0 keeps working, got ${port}`);
+});
+
+test('cli: occupied port exits 1 with a one-line fatal, no raw stack dump', async (t) => {
+  // server.listen() bind errors fire on the server 'error' event (not as a
+  // rejection), so an occupied port used to dump a raw "Unhandled 'error'
+  // event" stack that bypassed the fatal handler — a cron/CI-visible leak.
+  const holder = await new Promise((resolve) => {
+    const s = createServer((q, r) => r.end('ok'));
+    s.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  t.after(() => holder.close());
+  const heldPort = holder.address().port;
+  const child = spawn(process.execPath, [BIN, 'serve', '--port', String(heldPort)], { cwd: path.dirname(BIN) });
+  let se = '';
+  child.stderr.on('data', (d) => (se += d));
+  const sCode = await new Promise((res) => child.on('close', res));
+  assert.equal(sCode, 1, `expects exit 1\nstderr:\n${se}`);
+  assert.match(se, /\[apm-watch\] fatal: .*EADDRINUSE/, 'one-line fatal names the bind failure');
+  assert.doesNotMatch(se, /Unhandled 'error' event|at Server\./ , 'no raw bind error stack dumped');
 });

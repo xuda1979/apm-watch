@@ -135,6 +135,19 @@ function ensureStoreDir(p) {
   if (dir && dir !== '.') mkdirSync(dir, { recursive: true });
 }
 
+// server.listen() bind errors (EADDRINUSE, EACCES) fire asynchronously on the
+// server's 'error' event — not as a rejection of listen() — so a bare listen
+// dumps a raw "Unhandled 'error' event" stack that bypasses the one-line fatal
+// handler in main().catch(). Route them through the same curated message.
+function listenWithFatal(server, opts, onListening) {
+  server.on('error', (err) => {
+    console.error('[apm-watch] fatal:', err?.message ?? err);
+    process.exit(1);
+  });
+  server.listen(opts, onListening);
+  return server;
+}
+
 async function cmdRun(args) {
   const configPath = args.config;
   const config = loadConfig(configPath);
@@ -150,11 +163,11 @@ async function cmdRun(args) {
   // start UI before engine so first status is visible quickly
   if (ui === 'web') {
     const server = createUiServer(store, config);
-    server.listen({ host: config.ui?.host || '127.0.0.1', port: uiPort }, () => {
+    const uiServer = listenWithFatal(server, { host: config.ui?.host || '127.0.0.1', port: uiPort }, () => {
       const addr = server.address();
       console.log(`web UI on http://127.0.0.1:${addr.port}/`);
     });
-    attachCollector(server, engine);
+    attachCollector(uiServer, engine);
   } else if (ui === 'tui') {
     // TUI owns stdout; don't let engine logs corrupt it. Logs go to stderr.
     engine.log = (m) => console.error(`[apm-watch] ${m}`);
@@ -166,7 +179,9 @@ async function cmdRun(args) {
         const { createServer: createHttp } = await import('node:http');
         const collectorServer = createHttp();
         attachCollector(collectorServer, engine);
-        collectorServer.listen(port, '127.0.0.1', () => {
+        // A busy apm-port must fail fast with the same one-line message as a
+        // busy web port — the old bare listen dumped a raw stack here too.
+        listenWithFatal(collectorServer, { port, host: '127.0.0.1' }, () => {
           console.error(`[apm-watch] APM collector on http://127.0.0.1:${port}/apm/agent/trace`);
         });
       } catch (e) {
@@ -696,7 +711,7 @@ async function cmdServe(args) {
   const store = new Store(storePath);
   const server = createUiServer(store, config);
   const port = args.port !== undefined ? args.port : config.ui?.port ?? 8787;
-  server.listen({ host: '127.0.0.1', port }, () => {
+  listenWithFatal(server, { host: '127.0.0.1', port }, () => {
     const addr = server.address();
     console.log(`web UI on http://127.0.0.1:${addr.port}/`);
   });
