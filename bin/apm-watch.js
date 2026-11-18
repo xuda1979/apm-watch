@@ -80,6 +80,16 @@ function flagErrors(args) {
   if (args.ui !== undefined && !['web', 'tui'].includes(args.ui)) {
     errs.push(`--ui expects "web" or "tui", got ${JSON.stringify(args.ui)}`);
   }
+  // demo posts spans to the collector endpoint; a malformed --collect-addr
+  // would make every POST fail ("agent post failed" on repeat) while the
+  // process cheerfully runs forever — validate the URL shape up front.
+  if (args.collectAddr !== undefined) {
+    let u;
+    try { u = new URL(args.collectAddr); } catch { u = null; }
+    if (!u || !['http:', 'https:'].includes(u.protocol) || !u.hostname) {
+      errs.push(`--collect-addr expects an http(s) URL, got ${JSON.stringify(args.collectAddr)}`);
+    }
+  }
   return errs;
 }
 
