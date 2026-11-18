@@ -934,3 +934,41 @@ test('cli: unknown flags warn on stderr instead of silently dropping', async (t)
   assert.equal(code, 0, `stdout:\n${stdout}`);
   assert.match(stderr, /unknown flag "--confg"/, 'typoed flag is flagged on stderr');
 });
+
+test('cli: malformed numeric flags fail fast with a readable message', async (t) => {
+  // A typo'd --port/--ui-port/--apm-port/--interval must exit 2 with a clear
+  // message instead of a raw server.listen() RangeError (or a silent default
+  // in demo --interval).
+  for (const argv of [
+    ['serve', '--port', 'abc'],
+    ['serve', '--port', '-5'],
+    ['serve', '--port', '99999'],
+    ['run', '--ui-port', 'abc'],
+    ['demo', '--interval', '200ms'],
+  ]) {
+    const child = spawn(process.execPath, [BIN, ...argv], { cwd: path.dirname(BIN) });
+    let stderr = '';
+    child.stderr.on('data', (d) => (stderr += d));
+    const code = await new Promise((res) => child.on('close', res));
+    assert.equal(code, 2, `${argv.join(' ')}: expects exit 2\nstderr:\n${stderr}`);
+    assert.match(stderr, /invalid flag value/, `${argv.join(' ')} flags a readable error`);
+    assert.doesNotMatch(stderr, /RangeError/, `${argv.join(' ')} never leaks a raw stack trace`);
+  }
+  // port 0 stays legal (OS-assigned port) and positive intervals stay legal
+  const child = spawn(process.execPath, [BIN, 'serve', '--port', '0'], { cwd: path.dirname(BIN) });
+  let out = '';
+  let serr = '';
+  child.stdout.on('data', (d) => (out += d));
+  child.stderr.on('data', (d) => (serr += d));
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`serve did not report a port; stdout:\n${out}\nstderr:\n${serr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+  assert.ok(port > 0, `port 0 keeps working, got ${port}`);
+});

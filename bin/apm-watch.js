@@ -62,12 +62,37 @@ function parseArgs(argv) {
   return args;
 }
 
+// Numeric flags must be well-formed integers in their domain — a typo'd
+// --ui-port must fail with a readable message, not a raw RangeError thrown
+// from server.listen(), and demo --interval must not silently fall back.
+function flagErrors(args) {
+  const errs = [];
+  for (const [name, v] of [['--ui-port', args.uiPort], ['--port', args.port], ['--apm-port', args.apmPort]]) {
+    if (v !== undefined && (!Number.isInteger(v) || v < 0 || v > 65535)) {
+      errs.push(`${name} expects an integer port in [0, 65535], got ${JSON.stringify(v)}`);
+    }
+  }
+  if (args.interval !== undefined && (!Number.isInteger(args.interval) || args.interval < 1)) {
+    errs.push(`--interval expects a positive integer (ms), got ${JSON.stringify(args.interval)}`);
+  }
+  return errs;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   // A typo'd flag must not silently fall back to the default config and run
   // checks against it — surface it so cron/CI authors catch mistakes.
   for (const u of args.unknown) {
     console.error(`[apm-watch] unknown flag "${u}" ignored (see --help)`);
+  }
+  // A malformed numeric flag must fail fast with a readable message instead of
+  // a raw server.listen() RangeError (or a silent default in demo --interval).
+  const badFlags = flagErrors(args);
+  if (badFlags.length) {
+    console.error(`[apm-watch] invalid flag value:`);
+    for (const e of badFlags) console.error(`  ${e}`);
+    usage();
+    process.exit(2);
   }
   if (args.help) { usage(); return; }
   if (args.version) { console.log(VERSION); return; }
