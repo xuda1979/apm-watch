@@ -42,17 +42,26 @@ Flags:
 }
 
 function parseArgs(argv) {
-  const args = { _: [], unknown: [] };
+  const args = { _: [], unknown: [], missing: [] };
+  // A value-consuming flag given at the very end of argv (no following token)
+  // is a typo'd command line, not a request for the default: `demo --collect-addr`
+  // must not silently post to the default endpoint. Record it so flagErrors()
+  // can fail fast.
+  const valueFlags = new Set(['--config', '--ui', '--ui-port', '--port', '--out', '--collect-addr', '--apm-port', '--interval']);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--config') args.config = argv[++i];
-    else if (a === '--ui') args.ui = argv[++i];
-    else if (a === '--ui-port') args.uiPort = Number(argv[++i]);
-    else if (a === '--port') args.port = Number(argv[++i]);
-    else if (a === '--out') args.out = argv[++i];
-    else if (a === '--collect-addr') args.collectAddr = argv[++i];
-    else if (a === '--apm-port') args.apmPort = Number(argv[++i]);
-    else if (a === '--interval') args.interval = Number(argv[++i]);
+    if (valueFlags.has(a)) {
+      const v = argv[++i];
+      if (v === undefined) { args.missing.push(a); continue; }
+      if (a === '--config') args.config = v;
+      else if (a === '--ui') args.ui = v;
+      else if (a === '--out') args.out = v;
+      else if (a === '--collect-addr') args.collectAddr = v;
+      else if (a === '--ui-port') args.uiPort = Number(v);
+      else if (a === '--port') args.port = Number(v);
+      else if (a === '--apm-port') args.apmPort = Number(v);
+      else if (a === '--interval') args.interval = Number(v);
+    }
     else if (a === '--json') args.json = true;
     else if (a === '--help' || a === '-h') args.help = true;
     else if (a === '--version' || a === '-V') args.version = true;
@@ -67,6 +76,11 @@ function parseArgs(argv) {
 // from server.listen(), and demo --interval must not silently fall back.
 function flagErrors(args) {
   const errs = [];
+  // A value-consuming flag with no value (trailing at end of argv) is a
+  // typo'd command line — fail fast instead of silently using the default.
+  for (const f of args.missing || []) {
+    errs.push(`${f} expects a value`);
+  }
   for (const [name, v] of [['--ui-port', args.uiPort], ['--port', args.port], ['--apm-port', args.apmPort]]) {
     if (v !== undefined && (!Number.isInteger(v) || v < 0 || v > 65535)) {
       errs.push(`${name} expects an integer port in [0, 65535], got ${JSON.stringify(v)}`);
