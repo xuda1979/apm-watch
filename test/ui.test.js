@@ -748,3 +748,35 @@ test('ui: an unexpected throw inside a route returns a readable 500 and leaves t
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(page.status, 200);
 });
+
+test('ui: a throwing store read degrades the tui frame instead of crashing the render loop', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  t.after(() => store.close());
+  // simulate a torn store read racing the setInterval-driven render (e.g. a
+  // history read corrupted by a crash) — used to be an uncaught exception that
+  // killed the whole monitor with a raw stack
+  store.history = () => { throw new Error('boom: corrupt history read'); };
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const errs = [];
+  const origWrite = process.stdout.write;
+  const origErr = console.error;
+  process.stdout.write = (s) => { out += s; return true; };
+  console.error = (...a) => { errs.push(a.join(' ')); };
+  try {
+    // render() must not throw; and the interval-driven loop survives, so a
+    // second tick renders again (still degraded, not thrown)
+    tui.render();
+    tui.render();
+  } finally {
+    process.stdout.write = origWrite;
+    console.error = origErr;
+  }
+  assert.equal(errs.length, 2, 'each degraded frame logs one clean stderr line, not a raw stack');
+  assert.match(errs[0], /^\[apm-watch\] tui: boom: corrupt history read$/);
+  // the on-screen frame degrades visibly (web 500-parity) instead of dying
+  assert.match(out, /\[apm-watch\] tui: render degraded: boom: corrupt history read/);
+});
+
