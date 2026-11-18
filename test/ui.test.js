@@ -484,8 +484,10 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   try { tui.render(); } finally { process.stdout.write = orig; }
   // the configured slow-latency threshold annotates every apm row (a single
   // config-level threshold governs all services, unlike per-target http/tls)
-  assert.match(out, /svc: .*slow thr 250ms/);
-  assert.match(out, /bare: .*slow thr 250ms/);
+  // — and the sampling window + sample-cap ride the history lines like the
+  // live apm row (inc 86 parity), same `window 2m cap 3` family.
+  assert.match(out, /svc: .*slow thr 250ms  window 2m cap 3/);
+  assert.match(out, /bare: .*slow thr 250ms  window 2m cap 3/);
   // the resolved error-rate threshold annotates the err lines
   assert.match(out, /err 3\.0% .*errThr 5\.0%/);
   // the judged-against thresholds also annotate the live apm rows, same
@@ -511,6 +513,9 @@ test('ui: tui apm rows stay bare when no apm thresholds are configured', async (
   try { tui.render(); } finally { process.stdout.write = orig; }
   assert.match(out, /── apm history ──/);
   assert.doesNotMatch(out, / thr | errThr /, 'no apm threshold annotation when none configured');
+  // without a configured sampling window/cap the history lines keep the compact
+  // shape (no `window N`/` cap N` suffix) — same bare guard as the live row
+  assert.doesNotMatch(out, /window \d| cap \d/, 'no window/cap annotation when none configured');
 });
 
 test('ui: tui header shows monitor self-health from the health meta', async (t) => {
