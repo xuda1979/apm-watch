@@ -371,6 +371,10 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   assert.equal(typeof doc.series['http:latency']['ok-svc'][0].value, 'number', 'series latency points carry a numeric value');
   assert.equal(doc.series['http:status']['ok-svc'][0].value, 200, 'the live-run status sample surfaces on once --json series');
   assert.equal(doc.series['http:status']['slow-svc'][0].value, 200, 'the slow target status sample surfaces too');
+  // the product version rides the cron/CI document like the export JSON /
+  // web /api/states `apm_watch_version` (inc 92 parity): the envelope carries
+  // the exact version string the export face is asserted against
+  assert.equal(doc.apm_watch_version, '1.0.0', 'the product version surfaces on the once --json document');
   assert.deepEqual(doc.series['tls:remaining'], {}, 'no tls targets configured -> empty tls series map on once --json');
   assert.deepEqual(doc.series['apm:p50'], {}, 'no apm services -> empty p50 series map on once --json');
   assert.deepEqual(doc.series['apm:p95'], {}, 'no apm services -> empty p95 series map on once --json');

@@ -261,7 +261,17 @@ async function cmdOnce(args) {
   const since = Date.now() - uiHistorySeconds(config) * 1000;
   for (const r of results) {
     if (r.kind !== 'http') continue;
-    const avail = availability(store.history(r.target, 'http', since), Date.now());
+    const rows = store.history(r.target, 'http', since);
+    // The snapshot this run just wrote is the monitor's current live state.
+    // When a fast check completes in the same millisecond the row is
+    // timestamped, the availability window's `now` endpoint collides with the
+    // row ts and the span degenerates to 0ms -> pct null, silently dropping the
+    // uptime suffix off a fresh single-check report (inc 80/85 flake). Bump the
+    // endpoint one tick past the newest snapshot so the just-written state
+    // deterministically covers the present instant.
+    const lastTs = rows[rows.length - 1]?.ts;
+    const nowTs = lastTs != null ? Math.max(Date.now(), lastTs + 1) : Date.now();
+    const avail = availability(rows, nowTs);
     r.uptimePct = avail && avail.pct != null ? avail.pct : null;
     r.uptimeMs = avail && avail.totalMs > 0
       ? { up_ms: avail.upMs, down_ms: avail.downMs, total_ms: avail.totalMs, samples: avail.samples }
@@ -329,6 +339,11 @@ async function cmdOnce(args) {
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
+      // the product version rides the cron/CI document like the export JSON
+      // `apm_watch_version` (inc 92 parity): the once --json and /api/states
+      // faces used to drop it, so a cron/CI consumer had no version string to
+      // pair with the block shapes it engineers against.
+      apm_watch_version: VERSION,
       apm: { collect: config.apm?.collect === true, errorRateThreshold: config.apm?.errorRateThreshold ?? 0.05, latencyThresholdMs: config.apm?.latencyThresholdMs ?? null, windowMs: config.apm?.windowMs ?? 60_000, maxSamples: config.apm?.maxSamples ?? 5000 },
       http: { latencyThresholds: httpLatencyThresholds(config), timeoutMs: httpTimeoutMs(config), assertStatusCodes: httpAssertStatusCodes(config), assertBodyIncludes: httpAssertBodyIncludes(config), intervalSeconds: httpIntervalSeconds(config) },
       tls: { warnDaysBefore: tlsWarnDaysBefore(config), timeoutMs: tlsTimeoutMs(config), port: tlsPort(config), intervalSeconds: tlsIntervalSeconds(config) },

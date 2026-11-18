@@ -145,6 +145,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /application\/json/);
   const data = await res.json();
+  // the product version rides the JSON document like the export JSON /
+  // once --json `apm_watch_version` (inc 92 parity): a browser consumer keying
+  // off the api can pair the snapshot with the version that produced it
+  assert.equal(data.apm_watch_version, '1.0.0', 'the product version surfaces on the web api document');
   assert.ok(Array.isArray(data.states));
   assert.equal(data.states.length, 3);
   const apiHttp = data.states.find((s) => s.target === 'api' && s.kind === 'http');
