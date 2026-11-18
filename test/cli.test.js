@@ -160,8 +160,11 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   assert.match(stdout, /ok 1 warn 0 err 0 · updated .* · keep 7d/, `store retention window surfaces on the human report\nstdout:\n${stdout}`);
   // the down-time window rides the uptime suffix like the tui/web/export rows
   // (inc 80 parity): the live ok snapshot owns the whole history window, so the
-  // breakdown renders ` (down 0s)` after the pct
-  assert.match(stdout, /· 100% uptime \(down 0s\)/, `down-time window surfaces on the human report\nstdout:\n${stdout}`);
+  // breakdown renders ` (down 0s)` after the pct. The availability snapshot
+  // count rides along too (inc 85 parity — the same `uptime_ms.samples` the
+  // once --json breakdown carries) as a ` (over N samples)` suffix: the single
+  // live snapshot renders as ` (over 1 sample)`.
+  assert.match(stdout, /· 100% uptime \(down 0s\) \(over 1 sample\)/, `down-time window + snapshot count surface on the human report\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 1 when a check is warn (slow latency)', async (t) => {
