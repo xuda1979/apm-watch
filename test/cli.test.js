@@ -164,6 +164,13 @@ test('cli: once exits 0 when every check is ok', async (t) => {
   // webhook/email off, repeat 3600s -> `1h 0m` under the shared fmtInterval
   // short-form) exactly like the JSON envelope every other face carries
   assert.match(stdout, /notif desktop · repeat 1h 0m/, `notification channel-state surfaces on the human report\nstdout:\n${stdout}`);
+  // the availability/series history window the uptime pct + breakdown aggregate
+  // over rides the human report like the once --json / web /api/states / export
+  // JSON `ui.historySeconds` block (inc 89 parity): the unconfigured window
+  // resolves to the canonical 24h default, `86400` -> `24h 0m` under the shared
+  // fmtInterval short-form — the same ` (over N samples)` line's span printed
+  // as a config-global line like `keep Nd` / `notif ...`
+  assert.match(stdout, /history 24h 0m/, `availability/series history window surfaces on the human report\nstdout:\n${stdout}`);
   // the down-time window rides the uptime suffix like the tui/web/export rows
   // (inc 80 parity): the live ok snapshot owns the whole history window, so the
   // breakdown renders ` (down 0s)` after the pct. The availability snapshot

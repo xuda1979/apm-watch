@@ -67,6 +67,13 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // it — the browser renders ` · keep 14d` from it
   assert.match(html, /data\.store\.retentionDays/);
   assert.match(html, /· keep ' \+ data\.store\.retentionDays \+ 'd'/);
+  // the availability/series history window the charts + uptime pct aggregate
+  // over rides the meta line like the TUI `history`, export page and once
+  // report (inc 89 parity): /api/states sends ui.historySeconds (3600 in this
+  // server config), the meta line used to drop it — the browser renders
+  // ` · history 1h 0m` from it
+  assert.match(html, /data\.ui\.historySeconds/);
+  assert.match(html, /history ' \+ fmtInterval\(data\.ui\.historySeconds\)/);
   // the notification channel-state rides the meta line like the TUI `notif
   // ...`, export page and once report (inc 88 parity): /api/states sends the
   // resolved per-channel arming gates (desktop on by default, webhook+email on
@@ -565,6 +572,16 @@ test('ui: tui header shows monitor self-health from the health meta', async (t) 
   process.stdout.write = (s) => { out += s; return true; };
   try { tuiCfg.render(); } finally { process.stdout.write = orig; }
   assert.match(out, /keep 14d/, 'configured store retention window surfaces on the TUI header');
+  // the availability/series history window the uptime pct + sparklines
+  // aggregate over rides the header like the web meta `history`, export page
+  // and once report (inc 89 parity): the constructor null-gates the annotation,
+  // so a bare Tui stays without it, and a configured one surfaces the window
+  assert.doesNotMatch(out, /history \d+[smh]/, 'bare Tui header stays without a history-window annotation');
+  const tuiHist = new Tui({ store, intervalMs: 1000, historySeconds: 7200 });
+  out = '';
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tuiHist.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /history 2h 0m/, 'configured availability/series history window surfaces on the TUI header');
   // the notification channel-state rides the header like the web meta `notif
   // ...`, export page and once report (inc 88 parity): the constructor
   // null-gates the annotation, so a bare Tui stays without it, and a configured

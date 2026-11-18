@@ -186,6 +186,12 @@ async function cmdRun(args) {
       // inc 83): config-global, resolved from the same canonical engine
       // retentionDays resolver the JSON faces carry.
       retentionDays: retentionDays(config?.store),
+      // the availability/series history window rides the TUI header like every
+      // other face (web meta `history`, export page `history`, once report
+      // `history`, inc 89 parity): config-global, resolved from the same
+      // canonical engine uiHistorySeconds resolver the JSON faces carry — the
+      // same window the header uptime pct + sparklines aggregate over.
+      historySeconds: uiHistorySeconds(config),
       // the notification channel-state rides the TUI header like every other
       // face (once --json / web /api/states / export JSON `notifications` block,
       // inc 88 parity): repeat-interval + resolved per-channel gates threaded
@@ -451,6 +457,13 @@ async function cmdOnce(args) {
   // author sees the same alert-arming summary the JSON document shows.
   const notifCh = [notificationsDesktop(config) ? 'desktop' : null, notificationsWebhookEnabled(config) ? 'webhook' : null, notificationsEmailEnabled(config) ? 'email' : null].filter(Boolean);
   console.log(`notif ${notifCh.join(' ') || 'none'} · repeat ${fmtInterval(config.notifications?.repeatIntervalSeconds ?? 3600)}`);
+  // The availability/series history window the uptime pct + breakdown aggregate
+  // over rides the human report like the once --json / web /api/states / export
+  // JSON `ui.historySeconds` block (inc 89 parity): resolved by the same
+  // canonical uiHistorySeconds resolver those JSON faces carry — a cron/CI
+  // author sees the window span the `100% uptime (over N samples)` line
+  // aggregates over instead of only the JSON document carrying it.
+  console.log(`history ${fmtInterval(uiHistorySeconds(config))}`);
 }
 
 function fmtDuration(ms) {

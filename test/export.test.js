@@ -307,6 +307,13 @@ test('export: health block surfaces monitor uptime/lastCheck in json + html', ()
   // 3600s -> `1h 0m` under the shared fmtInterval short-form)
   assert.match(html, /notif desktop/, 'notification channel-state surfaces on the export page meta');
   assert.match(html, /repeat 1h 0m/, 'default alert repeat-interval surfaces on the export page meta');
+  // the availability/series history window the snapshot aggregates over rides
+  // the page meta like the web meta `&middot; history`, TUI header and once
+  // report (inc 89 parity): the export JSON `ui.historySeconds` block carries
+  // the resolved window, the page renderer used to drop it — the reader sees
+  // the span the uptime pct + series cover (unconfigured defaults to the 24h
+  // window, `86400` -> `24h 0m` under the shared fmtInterval short-form)
+  assert.match(html, /&middot; history 24h 0m/, 'availability/series history window surfaces on the export page meta');
   setTimeout(store.close, 0);
 });
 
