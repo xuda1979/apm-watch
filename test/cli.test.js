@@ -262,6 +262,16 @@ test('cli: once accepts an apm-only config and exits 0', async (t) => {
   // than dropped (web + export parity for the cron/CI document)
   assert.ok(Array.isArray(doc.events), 'once --json surfaces the events list key');
   assert.equal(doc.events.length, 0, 'a fresh once run records no alert events');
+  // the per-target series block rides the envelope like the web /api/states +
+  // export JSON (inc 91 parity): no target configured -> every six chart-family
+  // key present but empty rather than dropped
+  assert.ok(doc.series, 'once --json surfaces the series history block');
+  assert.deepEqual(doc.series['http:latency'], {}, 'no http targets -> empty latency series map on once --json');
+  assert.deepEqual(doc.series['http:status'], {}, 'no http targets -> empty status series map on once --json');
+  assert.deepEqual(doc.series['tls:remaining'], {}, 'no tls targets -> empty tls series map on once --json');
+  assert.deepEqual(doc.series['apm:p50'], {}, 'no apm samples -> empty p50 series map on once --json');
+  assert.deepEqual(doc.series['apm:p95'], {}, 'no apm samples -> empty p95 series map on once --json');
+  assert.deepEqual(doc.series['apm:errorRate'], {}, 'no apm samples -> empty errorRate series map on once --json');
 });
 
 test('cli: once --json emits machine-readable results and the exit code', async (t) => {
@@ -349,6 +359,22 @@ test('cli: once --json emits machine-readable results and the exit code', async 
   // /api/states summary (inc 81 parity): updated_at computed at snapshot time
   assert.ok(Number.isFinite(doc.summary.updated_at), 'the summary block carries the snapshot-update timestamp');
   assert.ok(doc.summary.updated_at >= ok.ts, 'summary update time is at/after the just-run result timestamps');
+  // the per-target series block rides the envelope like the web /api/states +
+  // export JSON (inc 91 parity): the live run above saved one latency + status
+  // metric per http target, so each target map carries exactly that single
+  // freshly-recorded sample (seeded states alone record no metrics), and the
+  // non-http chart families stay empty rather than dropped
+  assert.ok(doc.series, 'once --json surfaces the series history block');
+  assert.equal(doc.series['http:latency']['ok-svc'].length, 1, 'the live-run latency sample surfaces on once --json series');
+  assert.equal(typeof doc.series['http:latency']['ok-svc'][0].ts, 'number', 'series points carry a numeric ts');
+  assert.equal(doc.series['http:latency']['ok-svc'][0].target, 'ok-svc', 'series points carry their target');
+  assert.equal(typeof doc.series['http:latency']['ok-svc'][0].value, 'number', 'series latency points carry a numeric value');
+  assert.equal(doc.series['http:status']['ok-svc'][0].value, 200, 'the live-run status sample surfaces on once --json series');
+  assert.equal(doc.series['http:status']['slow-svc'][0].value, 200, 'the slow target status sample surfaces too');
+  assert.deepEqual(doc.series['tls:remaining'], {}, 'no tls targets configured -> empty tls series map on once --json');
+  assert.deepEqual(doc.series['apm:p50'], {}, 'no apm services -> empty p50 series map on once --json');
+  assert.deepEqual(doc.series['apm:p95'], {}, 'no apm services -> empty p95 series map on once --json');
+  assert.deepEqual(doc.series['apm:errorRate'], {}, 'no apm services -> empty errorRate series map on once --json');
 });
 
 test('cli: once --json reports the configured http verb (POST) per check', async (t) => {

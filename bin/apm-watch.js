@@ -299,6 +299,33 @@ async function cmdOnce(args) {
   // so a fresh run yields [] until a run/export alert cycle wrote some to the
   // store; the cron/CI document still carries the key so consumers see history.
   const events = store.recentEvents(50).map((e) => ({ ts: e.ts, level: e.level, source: e.source, message: e.message }));
+  // The per-target metric series ride the cron/CI document exactly like the web
+  // /api/states `series` block and the export JSON (inc 91 parity): each target
+  // this run just checked gets its metric line over the same ui-history window
+  // the availability above aggregates over, one `{target, ts, value}` point per
+  // stored sample (ts in seconds — the web formatSeries shape). Targets with no
+  // stored samples yet carry an empty array, so a consumer can render the six
+  // chart families from any snapshot without a null-guard.
+  const onceEventKindTargets = (kind) => [...new Set(results.filter((r) => r.kind === kind).map((r) => r.target))];
+  const onceSeriesRows = (prefix, targets, suffix) => {
+    const byTarget = {};
+    for (const t of targets) {
+      byTarget[t] = store.series(`${prefix}${t}/${suffix}`, since, 400)
+        .map((row) => ({ target: t, ts: row.ts / 1000, value: row.value }));
+    }
+    return byTarget;
+  };
+  const onceHttpTargets = onceEventKindTargets('http');
+  const onceTlsTargets = onceEventKindTargets('tls');
+  const onceApmNames = onceEventKindTargets('apm');
+  const series = {
+    'http:latency': onceSeriesRows('http:', onceHttpTargets, 'latency'),
+    'http:status': onceSeriesRows('http:', onceHttpTargets, 'status'),
+    'tls:remaining': onceSeriesRows('tls:', onceTlsTargets, 'remaining'),
+    'apm:p50': onceSeriesRows('apm:', onceApmNames, 'p50'),
+    'apm:p95': onceSeriesRows('apm:', onceApmNames, 'p95'),
+    'apm:errorRate': onceSeriesRows('apm:', onceApmNames, 'errorRate'),
+  };
   if (args.json) {
     console.log(JSON.stringify({
       exit_code: process.exitCode,
@@ -320,6 +347,7 @@ async function cmdOnce(args) {
       // once document used to drop it, so a cron/CI consumer had no "generated
       // when" field for the counts — now it mirrors the web block exactly.
       summary: { overall: aggStatus(results.map((r) => r.status)), counts: countStatuses(results.map((r) => r.status)), updated_at: Date.now() },
+      series,
       results: results.map(onceJsonRow),
     }, null, 2));
     return;

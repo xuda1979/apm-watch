@@ -179,6 +179,17 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // availability/series history window the snapshot aggregates over: ui.historySeconds
   // (web api parity), default 24h when unconfigured
   assert.equal(out.ui.historySeconds, 86400, 'unconfigured ui history window surfaces as the 24h default on the export snapshot');
+  // the per-target series block rides the snapshot like the web /api/states +
+  // once --json (inc 91 parity): seeded states alone record no metrics, so each
+  // target map key is present with an empty array (no saved samples), and all
+  // six chart-family keys exist rather than dropped
+  assert.ok(out.series, 'export JSON surfaces the series history block');
+  assert.deepEqual(out.series['http:latency'], { api: [], other: [] }, 'per-target http latency series keys surface, empty without saved metrics');
+  assert.deepEqual(out.series['http:status'], { api: [], other: [] }, 'per-target http status series keys surface, empty without saved metrics');
+  assert.deepEqual(out.series['tls:remaining'], { api: [] }, 'per-target tls remaining series key surfaces, empty without saved metrics');
+  assert.deepEqual(out.series['apm:p50'], { api: [] }, 'per-target apm p50 series key surfaces, empty without saved metrics');
+  assert.deepEqual(out.series['apm:p95'], { api: [] }, 'per-target apm p95 series key surfaces, empty without saved metrics');
+  assert.deepEqual(out.series['apm:errorRate'], { api: [] }, 'per-target apm errorRate series key surfaces, empty without saved metrics');
   setTimeout(store.close, 0);
 });
 
