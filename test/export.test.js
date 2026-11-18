@@ -50,6 +50,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api.apm.error_rate, 0.1);
   assert.equal(api.apm.errors, 1);
   assert.equal(api.apm.samples, 10);
+  assert.equal(api.apm.max_samples, 5000, 'unconfigured collector sample-cap resolves to the 5000 default on the export snapshot');
   // the apm warn criteria ride the row like once --json (the engine stamps the
   // judged-against thresholds onto each runApmCheck result): re-resolved from
   // the same config-global defaults the apm mirror block carries
@@ -86,6 +87,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   assert.equal(api2.apm.error_rate_threshold, 0.08, 'configured apm error-rate threshold surfaces on the export snapshot');
   assert.equal(api2.apm.latency_threshold_ms, 400, 'configured apm slow-latency threshold surfaces on the export snapshot');
   assert.equal(api2.apm.window_ms, 60_000, 'unconfigured collector window resolves to the 60s default on the export snapshot');
+  assert.equal(api2.apm.max_samples, 5000, 'unconfigured collector sample-cap resolves to the 5000 default on the export snapshot');
   // per-check run cadence traces the same resolve path as the thresholds: cfg2
   // sets no intervalSeconds, so the per-target map resolves the kind defaults
   // (60s http / 300s tls) exactly like the mirror blocks assert above
@@ -100,7 +102,7 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   // cadence as ` · every 1m` (inc 76 parity — the 60s scheduler default apm's
   // interval_seconds resolved to, rendered before the threshold annotations)
   const html2 = renderStatusPage(out2);
-  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) · every 1m errThr 8\.0% slow thr 400ms err 10\.0% · window 1m/, 'judged-against apm thresholds, the measured error rate, the collection cadence and the sampling window annotate the export page apm row');
+  assert.match(html2, /p50=200ms p95=320ms errors=1\/10 \(slow p95\) · every 1m errThr 8\.0% slow thr 400ms err 10\.0% · window 1m · cap 5000/, 'judged-against apm thresholds, the measured error rate, the collection cadence, the sampling window and the sample-cap annotate the export page apm row');
   // the per-probe slow-latency threshold rides the http row too (inc 73 parity):
   // api carries latencyThresholdMs 200 in cfg2, so the detail appends ` · thr 200ms`
   // after the resolved cadence, exactly like the JSON http block carries it

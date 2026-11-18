@@ -86,6 +86,10 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // — null when unseeded — the row renderer used to drop it, the detail now
   // appends ` err N%` like the TUI apm-history err line)
   assert.match(html, /s\.error_rate/);
+  // the browser-side table renderer surfaces the collector sample-cap (inc 82
+  // parity: /api/states sends max_samples on apm rows, the row renderer used to
+  // drop it — the `· cap N` cell rides after the window anno)
+  assert.match(html, /s\.max_samples/);
   // the browser-side table renderer surfaces the per-check run cadence (export
   // page / TUI / once parity: /api/states sends interval_seconds on http + tls
   // rows, the row renderer used to drop it)
@@ -149,6 +153,7 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // snapshot can't recall the window it aggregated (no store column), null
   // off-kind
   assert.equal(svcApm.window_ms, 90_000, 'configured collector window surfaces on the web api row');
+  assert.equal(svcApm.max_samples, 7, 'configured collector sample-cap surfaces on the web api row');
   assert.equal(apiHttp.error_rate_threshold, null, 'http rows carry no apm error-rate threshold');
   // the per-row judged-against threshold / abort timeout fields ride the web
   // api rows on the same shared slot once --json uses (latency_threshold_ms:
@@ -450,7 +455,7 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   }
   t.after(() => store.close());
 
-  const tui = new Tui({ store, intervalMs: 1000, apmLatencyThresholdMs: 250, apmErrorRateThreshold: 0.05, apmWindowMs: 120_000 });
+  const tui = new Tui({ store, intervalMs: 1000, apmLatencyThresholdMs: 250, apmErrorRateThreshold: 0.05, apmWindowMs: 120_000, apmMaxSamples: 3 });
   let out = '';
   const orig = process.stdout.write;
   process.stdout.write = (s) => { out += s; return true; };
@@ -465,8 +470,8 @@ test('ui: tui apm-history rows annotate the warn criteria (web drawApm/drawErrRa
   // errThr/slow-thr format (inc 68 parity): every apm row carries the resolved
   // 5.0% error-rate threshold from the constructor plus the configured 250ms
   // latency threshold, appended after the engine detail line
-  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms err 10\.0% window 2m/, 'warn live apm row annotates the judged-against thresholds, the measured error rate and the sampling window');
-  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms window 2m/, 'bare live apm row annotates the judged-against thresholds and the sampling window (unseeded error rate stays bare)');
+  assert.match(out, /apm:p50=200ms p95=270ms errors=0\/10 \(slow p95\) errThr 5\.0% slow thr 250ms err 10\.0% window 2m cap 3/, 'warn live apm row annotates the judged-against thresholds, the measured error rate, the sampling window and the sample-cap');
+  assert.match(out, /apm:p50=20ms p95=40ms errors=0\/10 errThr 5\.0% slow thr 250ms window 2m cap 3/, 'bare live apm row annotates the judged-against thresholds, the sampling window and the sample-cap (unseeded error rate stays bare)');
 });
 
 test('ui: tui apm rows stay bare when no apm thresholds are configured', async (t) => {

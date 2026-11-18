@@ -366,8 +366,12 @@ async function cmdOnce(args) {
     // every apm result by runApmCheck (windowMs, the collector's configured
     // sampling window), so the human row says how long a window each summary
     // was collected over — compact formatted like the every-cadence anno above.
+    // The per-service sample-buffer capacity rides as ` cap N` (inc 82 parity):
+    // stamped onto every apm result by runApmCheck (maxSamples, the ring the
+    // collector caps the buffer at), so the row says how many samples the
+    // window's summary was collected over.
     const apmAnno = r.kind === 'apm'
-      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}${r.errorRate != null ? ` err ${(r.errorRate * 100).toFixed(1)}%` : ''}${r.windowMs != null ? ` window ${fmtInterval(r.windowMs / 1000)}` : ''}`
+      ? `${r.errorRateThreshold != null ? ` errThr ${(r.errorRateThreshold * 100).toFixed(1)}%` : ''}${r.latencyThresholdMs != null ? ` slow thr ${r.latencyThresholdMs}ms` : ''}${r.errorRate != null ? ` err ${(r.errorRate * 100).toFixed(1)}%` : ''}${r.windowMs != null ? ` window ${fmtInterval(r.windowMs / 1000)}` : ''}${r.maxSamples != null ? ` cap ${r.maxSamples}` : ''}`
       : '';
     // the per-check run cadence rides the human row like the tui/web/export rows
     // (inc 71 parity): stamped onto each result in cmdOnce (intervalSeconds,
@@ -499,6 +503,7 @@ export function onceJsonRow(r) {
     samples: r.samples ?? null,              // apm only
     error_rate_threshold: r.errorRateThreshold ?? null, // apm only (stamped by runApmCheck, inc 33)
     window_ms: r.windowMs ?? null, // apm only (stamped by runApmCheck, inc 77 — the sampling window the summary was collected over)
+    max_samples: r.maxSamples ?? null, // apm only (stamped by runApmCheck, inc 82 — the sample-buffer capacity the collector capped the window's summary at)
     uptime_pct: r.uptimePct ?? null, // http only (computed in cmdOnce, inc 58)
     uptime_ms: r.uptimeMs ?? null,   // http only (breakdown, export.js:43 gates)
     detail: r.detail,
