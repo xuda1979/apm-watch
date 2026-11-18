@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Lightweight endpoint + TLS cert + APM desktop monitor (a Datadog slice).",
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "bin": {
     "apm-watch": "bin/apm-watch.js"
   },
