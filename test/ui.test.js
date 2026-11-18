@@ -358,6 +358,13 @@ test('ui: tui renders live status + latency sparkline', async (t) => {
   // per-cert chain path surfaces in the row, leaf-first (web/export tooltip
   // parity): subjects use the compact last-DN-component form
   assert.match(out, /chain: CN=fixture\.test -> CN=inter\.test/);
+  // per-cert validity windows ride the chain path, leaf-first (inc 84 parity):
+  // the fixed fixture dates survive the store's chain_json round-trip and
+  // render as-is on the live row — the fields the web/export tooltips carry
+  // (validFrom / notAfter / daysRemaining)
+  assert.match(out, /chain: CN=fixture\.test -> CN=inter\.test  valid 2025-01-01T00:00:00\.000Z notAfter 2030-01-01T00:00:00\.000Z 12d \| valid 2025-01-01T00:00:00\.000Z notAfter 2035-01-01T00:00:00\.000Z 100d/);
+  // neither fixture cert is self-signed, so no marker rides the chain path
+  assert.doesNotMatch(out, /2d \| valid 2025.*\(self-signed\)/, 'non-self-signed chain certs carry no self-signed marker');
   // ...but no broken-chain marker on a valid chain
   assert.doesNotMatch(out, /\(chain broken\)/);
   // sparkline glyph block for latency history

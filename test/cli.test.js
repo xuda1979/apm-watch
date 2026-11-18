@@ -429,6 +429,11 @@ test('cli: once human output surfaces tls chain metadata (leaf subject)', async 
   // the full per-cert chain path rides the row like the TUI `chain: A -> B`
   // annotation (inc 72 parity): both entries shortened to their CN component
   assert.match(stdout, /  chain: CN=fixture\.test -> CN=fixture\.test/, `multi-cert chain path surfaces in the human report\nstdout:\n${stdout}`);
+  // per-cert validity windows ride the chain path (inc 84 parity): the real
+  // openssl cert's dates are relative to now and render as GMT strings (the
+  // verbatim tooltip format), so assert the labeled shape; both duplicated
+  // certs are self-signed, so the marker rides each block
+  assert.match(stdout, /valid .* notAfter .* 15d \(self-signed\) \| valid .* notAfter .* 15d \(self-signed\)/, `per-cert validity windows surface in the human report\nstdout:\n${stdout}`);
   // a valid chain must not be flagged as broken
   assert.doesNotMatch(stdout, /chain broken/);
   // the judged-against cert warn-days threshold rides the row like the tui /

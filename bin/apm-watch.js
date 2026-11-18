@@ -324,9 +324,21 @@ async function cmdOnce(args) {
     // array on every tls result (once --json carries it as `chain`), but the
     // human row used to drop it, showing only the leaf subject. Single-cert
     // chains are already covered by the leaf subject, so gate on length > 1
-    // exactly like the TUI row.
+    // exactly like the TUI row. The per-cert validity windows ride along after
+    // the subject run (inc 84 parity): each cert's validFrom / notAfter / days
+    // remaining seed the web & export tooltips and every JSON face, but the
+    // human row used to drop every field but the subject — now the row renders
+    // them leaf-first, one space-separated block per cert.
+    // per-cert validity windows ride the human row like the web/export tooltips
+    // and every JSON face (inc 84 parity): the chain producers emit the raw
+    // notBefore/notAfter strings (GMT for socket certs, ISO for pem/cert-test
+    // fixtures) and the tooltips render them verbatim, so the human row passes
+    // them through untouched too — a cert with no date still renders a dash.
+    const chainDates = Array.isArray(r.chain) && r.chain.length > 1
+      ? '  ' + r.chain.map((c) => `valid ${c.validFrom || '—'} notAfter ${c.notAfter || '—'} ${c.daysRemaining != null ? `${c.daysRemaining}d` : '—'}${c.selfSigned ? ' (self-signed)' : ''}`).join(' | ')
+      : '';
     const tls = r.kind === 'tls'
-      ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}${Array.isArray(r.chain) && r.chain.length > 1 ? `  chain: ${r.chain.map((c) => shortName(c.subject)).join(' -> ')}` : ''}`
+      ? `${r.leafSubject ? ` (${r.leafSubject})` : ''}${r.validChain === false ? ' (chain broken)' : ''}${Array.isArray(r.chain) && r.chain.length > 1 ? `  chain: ${r.chain.map((c) => shortName(c.subject)).join(' -> ')}` : ''}${chainDates}`
       : '';
     // http rows whose detail prose carries no timing figure (assert/body
     // mismatches, network errors — unlike `HTTP 200 in Nms`, `slow: Nms >`,
