@@ -346,3 +346,19 @@ test('export: health is null when no monitor meta was persisted', () => {
   assert.doesNotMatch(html, /monitor /);
   setTimeout(store.close, 0);
 });
+
+test('export: a corrupted chain_json store row degrades to a null chain instead of crashing the snapshot', () => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', daysRemaining: 12, validChain: true, leafSubject: '/CN=fixture.test', detail: 'expires in 12d' });
+  // simulate a torn on-disk write (web /api/states + TUI row parity): the raw
+  // JSON.parse used to throw an uncaught SyntaxError that failed the one-shot
+  // `export`/`once` CLI with a raw stack — now the snapshot degrades the chain
+  // to null and both the JSON and the status page still render
+  store.db.prepare("UPDATE states SET chain_json='this is { not json' WHERE kind='tls'").run();
+  const out = exportStatus(store, {});
+  const api = out.targets.find((t) => t.target === 'api');
+  assert.equal(api.tls.chain, null, 'malformed chain_json renders as a null chain, not a crash');
+  const html = renderStatusPage(out);
+  assert.match(html, /expires in 12d/, 'the status page still renders the degraded target row');
+  setTimeout(store.close, 0);
+});
