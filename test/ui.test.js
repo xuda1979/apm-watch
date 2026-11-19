@@ -1,6 +1,7 @@
 // UI tests: web single-page + JSON API over the store, and the TUI renderer.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { Store } from '../lib/store.js';
 import { createUiServer } from '../lib/ui-server.js';
 import { Tui } from '../lib/ui-tui.js';
@@ -778,5 +779,128 @@ test('ui: a throwing store read degrades the tui frame instead of crashing the r
   assert.match(errs[0], /^\[apm-watch\] tui: boom: corrupt history read$/);
   // the on-screen frame degrades visibly (web 500-parity) instead of dying
   assert.match(out, /\[apm-watch\] tui: render degraded: boom: corrupt history read/);
+});
+
+test('ui: tui renders the unknown-status marker when a snapshot has no known status', async (t) => {
+  const store = new Store(':memory:');
+  // colorStatus falls through to the bare `?` marker only for statuses outside
+  // ok/warn/error (e.g. a parked row the engine never finalized)
+  store.saveState({ target: 'x', kind: 'http', status: 'unknown', latencyMs: 12, method: 'GET', statusCode: 200, detail: 'HTTP 200' });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /  \? x  http:GET 200 unknown:12ms/, 'unknown-status row carries the bare `?` worst-status marker');
+});
+
+test('ui: tui renders the waiting placeholder when the store holds no snapshots yet', async (t) => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /\(no checks yet — waiting for first run\)/, 'fresh store renders the waiting placeholder instead of an empty frame');
+});
+
+test('ui: tui renders the recent-events block with leveled color lines', async (t) => {
+  const store = new Store(':memory:');
+  // one parked state so the frame has rows; the events block follows them
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.addEvent('error', 'http', 'boom');
+  store.addEvent('warn', 'tls', 'expiring soon');
+  store.addEvent('info', 'engine', 'started');
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /── recent events ──/);
+  // the padded level rides color-coded: red error, yellow warn, dim otherwise
+  assert.match(out, /\x1b\[31merror\x1b\[0m/, 'error events render red');
+  assert.match(out, /\x1b\[33mwarn \x1b\[0m/, 'warn events render yellow');
+  assert.match(out, /\x1b\[2minfo \x1b\[0m/, 'info events render dim');
+  // each line carries "level-color <time> <source>: <message>"
+  assert.match(out, /http: boom/);
+  assert.match(out, /tls: expiring soon/);
+  assert.match(out, /engine: started/);
+});
+
+test('ui: tui fmtAgo renders whole-hour uptimes as Nh Mm ago', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  t.after(() => store.close());
+
+  // 2h30m of uptime -> the hour branch (`2h 30m ago`), including a zero-minute
+  // remainder (`2h 0m ago`) which still routes through the same branch
+  for (const { elapsed, expected } of [
+    { elapsed: 2.5 * 3600e3, expected: '2h 30m ago' },
+    { elapsed: 2 * 3600e3, expected: '2h 0m ago' },
+  ]) {
+    store.setMeta('health', { status: 'ok', uptimeSince: Date.now() - elapsed, lastCheckAt: Date.now() });
+    const tui = new Tui({ store, intervalMs: 1000 });
+    let out = '';
+    const orig = process.stdout.write;
+    process.stdout.write = (s) => { out += s; return true; };
+    try { tui.render(); } finally { process.stdout.write = orig; }
+    assert.match(out, new RegExp(`up ${expected}`), `uptime ${elapsed / 1000}s ago renders as ${expected}`);
+  }
+});
+
+test('ui: tui stop() guards double-clears and the started path owns a clean process exit', async (t) => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+
+  // programmatic (never-started) Tui: stop() clears once, calls onExit, and must
+  // NOT process.exit — the caller owns teardown when start() was never called
+  let exits = 0;
+  const tui = new Tui({ store, intervalMs: 1000, onExit: () => { exits += 1; } });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try {
+    tui.stop();
+    tui.stop(); // cleared-guard: the second stop is a no-op
+  } finally {
+    process.stdout.write = orig;
+  }
+  assert.equal(exits, 1, 'onExit fires exactly once across a guarded double-stop');
+  assert.match(out, /\x1b\[\?25h/, 'stop() restores the cursor');
+  assert.match(out, /\x1b\[0m/, 'stop() resets color state');
+
+  // the owned-process path (started -> SIGINT/SIGTERM -> stop() -> exit 0) runs
+  // in a child so process.exit(0) terminates the TUI, not the test runner
+  const libTui = new URL('../lib/ui-tui.js', import.meta.url).href;
+  const libStore = new URL('../lib/store.js', import.meta.url).href;
+  const script = `
+import { Tui } from ${JSON.stringify(libTui)};
+import { Store } from ${JSON.stringify(libStore)};
+const store = new Store(':memory:');
+const tui = new Tui({ store, intervalMs: 60000 });
+tui.start();
+console.log('TUI_STARTED');
+`;
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let so = '';
+    let se = '';
+    child.stdout.on('data', (d) => { so += d; });
+    child.stderr.on('data', (d) => { se += d; });
+    await new Promise((resolve, reject) => {
+      const to = setTimeout(() => reject(new Error(`${signal}: child never started: ${se}`)), 10000);
+      child.stdout.on('data', () => { if (so.includes('TUI_STARTED')) { clearTimeout(to); resolve(); } });
+      child.on('error', reject);
+    });
+    child.kill(signal);
+    const code = await new Promise((resolve) => child.on('exit', resolve));
+    assert.equal(code, 0, `${signal} -> stop() -> process.exit(0), observed exit ${code}; stderr: ${se}`);
+  }
 });
 
