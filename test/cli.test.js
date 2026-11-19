@@ -289,6 +289,62 @@ test('cli: tui collector start failure logs a one-line catch and still stops cle
   assert.equal(code, 0, 'SIGTERM still exits 0 when the collector could not start');
 });
 
+test('cli: TUI collector falls back to the documented --apm-port 8789 default', async (t) => {
+  // README:148 documents the TUI's "自带独立 APM 上报端口，默认 `--apm-port
+  // 8789`"; cmdRun's TUI branch (bin/apm-watch.js:195) holds the literal
+  // fallback `const port = args.apmPort || config.apm?.port || 8789`. Every
+  // other TUI test passes an explicit free port (--apm-port 0 is falsy in the
+  // `||` chain, so an ephemeral port cannot be requested through the flag
+  // path), so a rename or removal of the `|| 8789` literal would go green
+  // uncaught. Spawn with no --apm-port and no config apm.port, then pin the
+  // collector banner on the literal port.
+  // The test binds the fixed literal 8789, so pre-probe it: on a machine where
+  // something already owns 8789 the collector would fail with EADDRINUSE before
+  // the literal ever surfaces — that is an environment collision, not a product
+  // regression, so skip instead of failing.
+  const probe = createNetServer();
+  const defaultPortFree = await new Promise((resolve) => {
+    probe.on('error', () => resolve(false));
+    probe.listen(8789, '127.0.0.1', () => resolve(true));
+  }).finally(() => probe.close());
+  if (!defaultPortFree) {
+    t.skip('port 8789 is already in use on this machine');
+    return;
+  }
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-tui-fallback-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'tui-fallback.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true },
+    store: { path: path.join(dir, 'tui-fallback.db') },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'tui'], {
+    cwd: path.dirname(BIN),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  let exited = null;
+  const exit = new Promise((resolve) => { child.on('close', (code) => resolve(code)); });
+  t.after(() => { if (child.exitCode === null && !exited) child.kill('SIGTERM'); });
+
+  await new Promise((resolve, reject) => {
+    const deadline = setTimeout(resolve, 5000);
+    child.stderr.on('data', () => {
+      if (/\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:8789\/apm\/agent\/trace/.test(stderr)) { clearTimeout(deadline); resolve(); }
+    });
+    child.on('error', reject);
+    child.on('close', () => { clearTimeout(deadline); resolve(); });
+  });
+  assert.match(stderr, /\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:8789\/apm\/agent\/trace/, `collector banner reports the documented default port 8789\nstderr:\n${stderr}`);
+
+  child.kill('SIGTERM');
+  const code = await exit;
+  exited = true;
+  assert.equal(code, 0, 'TUI with the default collector port still stops cleanly');
+});
+
 test('cli: once surfaces a pre-existing monitor up-span in hours (fmtDuration hour branch)', async (t) => {
   // fmtDuration's hour branch (bin/apm-watch.js) renders `2h 0m`-style up-spans.
   // A zero-check `once` (http: []) never calls engine.persistHealth(), so the
