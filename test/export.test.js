@@ -266,6 +266,37 @@ test('export: renderStatusPage builds a self-contained html snapshot', () => {
   setTimeout(store.close, 0);
 });
 
+test('export: the status page is a zero-dependency single file (no external fetch anchors)', () => {
+  // README:42-43 documents the export page as 自包含 / 零依赖单文件, drop-in for
+  // static hosting / CDN — so the rendered document must not reference anything
+  // off-document: no script (the page needs no JS), no stylesheet link, no img,
+  // no src/href attribute at all, and no css @import / url() (which would fetch
+  // external fonts or background assets). All styling lives in the inline <style>.
+  const store = new Store(':memory:');
+  const past = Date.now() - 60000;
+  store.setClock(() => past);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', statusCode: 200, detail: 'HTTP 200' });
+  store.saveState({ target: 'api', kind: 'tls', status: 'warn', detail: 'expires in 12d', validChain: false, chain: [{ subject: '/CN=fixture.test', issuer: '/CN=fixture.test', notAfter: '2030-01-01T00:00:00.000Z', validFrom: '2025-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: true }] });
+  // a target with only a tls state (no http row) flows through the falsy side of
+  // the export availability ternary: it contributes no availability-map entry,
+  // its http block stays null
+  store.saveState({ target: 'fe', kind: 'tls', status: 'ok', detail: 'expires in 100d', validChain: true, chain: [{ subject: '/CN=fe.test', issuer: '/CN=fe.test', notAfter: '2031-01-01T00:00:00.000Z', validFrom: '2026-01-01T00:00:00.000Z', daysRemaining: 365, selfSigned: false }] });
+  const out = exportStatus(store, {}, '9.9.9');
+  assert.equal(out.availability['fe'], undefined, 'target without an http row contributes no availability-map entry');
+  assert.equal(out.targets.find((t) => t.target === 'fe').http, null, 'http block stays null for a tls-only target');
+  const html = renderStatusPage(out);
+  assert.doesNotMatch(html, /<script/i, 'no script element: the page needs no JavaScript');
+  assert.doesNotMatch(html, /<link\b/i, 'no link element: all styles are inline');
+  assert.doesNotMatch(html, /<img\b/i, 'no img element: no external images');
+  assert.doesNotMatch(html, /(?:src|href)=/i, 'no src/href attribute at all: nothing to fetch');
+  assert.doesNotMatch(html, /@import/i, 'no css @import: no external stylesheet pull');
+  assert.doesNotMatch(html, /url\(/i, 'no css url(): no external font/background fetch');
+  // and it is a complete single document: inline <style> closes before a paired </html>
+  assert.match(html, /<style>/);
+  assert.match(html, /<\/html>/);
+  setTimeout(store.close, 0);
+});
+
 test('export: recent events surface in the JSON snapshot, newest first', () => {
   const store = new Store(':memory:');
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
