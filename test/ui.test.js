@@ -1105,3 +1105,40 @@ test('ui: tui row edges — single-sample availability, malformed chain_json, ap
   assert.match(out, /overall error/, 'the worst status word across a mixed snapshot is error');
   assert.match(plain, /  err\s+mix  http:error:9ms/, 'the mixed row wears the err marker and its segments');
 });
+
+test('ui: web api folds — foreign-status counts stay a closed set, partial health meta defaults, off-kind rows degrade intervals to null', async (t) => {
+  const store = new Store(':memory:');
+  // a status word outside the ok/warn/error/unknown wheel (e.g. the engine rows
+  // the tui folds to a bare worst marker) must slot into the closed-set counts
+  // via the ?? 0 guard instead of leaking an undefined cell
+  store.saveState({ target: 'mix', kind: 'engine', status: 'pending', detail: 'starting' });
+  store.saveState({ target: 'up', kind: 'http', status: 'ok', latencyMs: 5, detail: 'HTTP 200' });
+  // health meta with only a null status: the surface keeps its defaults
+  // (status 'unknown', uptimeSince/lastCheckAt null) instead of holding the
+  // raw null status through to the document
+  store.setMeta('health', { status: null });
+  t.after(() => store.close());
+
+  const server = createUiServer(store, { ui: { historySeconds: 3600 } });
+  const port = await listen(server);
+  t.after(() => new Promise((r) => server.close(r)));
+
+  const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+  assert.equal(res.status, 200);
+  const data = await res.json();
+
+  // closed-set counts: `pending` lands as its own cell and nothing breaks
+  assert.equal(data.summary.counts.pending, 1, 'the foreign status word slots into the closed-set counts');
+  assert.equal(data.summary.counts.ok, 1, 'the ok row counts normally');
+  assert.equal(data.summary.overall, 'ok', 'non-error/warn rows fold to ok overall');
+
+  // partial health meta defaults (status -> unknown, timestamps -> null)
+  assert.deepEqual(data.health, { status: 'unknown', uptimeSince: null, lastCheckAt: null },
+    'a null-status health meta surfaces unknown + null timestamps');
+  // off-kind rows degrade the per-check cadence like the other http/tls-only
+  // mirrors (the engine kind is neither http, nor tls, nor apm)
+  const engineRow = data.states.find((s) => s.target === 'mix');
+  assert.equal(engineRow.interval_seconds, null, 'off-kind rows degrade interval_seconds to null');
+  const httpRow = data.states.find((s) => s.target === 'up');
+  assert.equal(httpRow.interval_seconds, null, 'an unconfigured http target yields a null interval too');
+});
