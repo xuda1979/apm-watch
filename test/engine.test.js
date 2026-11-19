@@ -279,6 +279,29 @@ test('engine: per-check intervalSeconds overrides the scheduler-wide default', (
   assert.equal(find('tls:cert'), 120_000); // unit string "2m"
 });
 
+test('engine: intervals above the scheduler maximum are clamped down to 300s', () => {
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      scheduler: { httpIntervalSeconds: 900, tlsIntervalSeconds: '1h' },
+      http: [
+        { name: 'slow', url: 'http://x/', intervalSeconds: 600 },     // numeric > MAX
+        { name: 'hourly', url: 'http://y/', intervalSeconds: '10m' }, // unit string > MAX
+        { name: 'sched', url: 'http://z/' },                           // scheduler-wide > MAX
+      ],
+      tls: [{ name: 'cert', host: 'h', port: 443, intervalSeconds: 1200 }],
+    },
+    log: () => {},
+  });
+  const tasks = engine.buildTasks();
+  const find = (id) => tasks.find((t) => t.id === id).intervalMs;
+  assert.equal(find('http:slow'), 300_000);   // 600s numeric clamps down to MAX_INTERVAL_S
+  assert.equal(find('http:hourly'), 300_000); // "10m" unit string clamps down to MAX_INTERVAL_S
+  assert.equal(find('http:sched'), 300_000);  // scheduler-wide 900s clamps down to MAX_INTERVAL_S
+  assert.equal(find('tls:cert'), 300_000);    // tls 1200s clamps down to MAX_INTERVAL_S
+});
+
 test('engine: buildTasks registers the apm:summary task only when apm.collect is enabled', () => {
   const store = new Store(':memory:');
   const on = new Engine({

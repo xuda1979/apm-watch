@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig, httpIntervalSeconds, tlsIntervalSeconds, defaultConfigFile } from '../lib/config.js';
+import { loadConfig, httpIntervalSeconds, tlsIntervalSeconds, schedulerIntervals, defaultConfigFile } from '../lib/config.js';
 
 const SMTP_KEYS = ['SMTP_HOST', 'SMTP_FROM', 'SMTP_TO', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS'];
 
@@ -162,6 +162,30 @@ test('config: non-finite interval falls back to the kind default (http 60s, tls 
     scheduler: { tlsIntervalSeconds: '5x' },
   });
   assert.equal(tlsOut.api, 300, 'tls non-finite interval falls back to 300s');
+});
+
+test('config: intervals above the scheduler maximum clamp down to 300s across resolver surfaces', () => {
+  // README: "无效的 scheduler 间隔会被自动钳制到 [30, 300]s" — the clamp-DOWN
+  // direction. validate.js accepts any finite positive duration, so large
+  // values (600, "10m", "1h") pass validation and are clamped only at runtime
+  // here, mirroring engine.js taskIntervalMs/clampIntervalSeconds so web/export/
+  // once --json surface 300 and not the configured-but-never-run interval.
+  const out = httpIntervalSeconds({
+    http: [{ name: 'a', url: 'http://a', intervalSeconds: 600 }],
+    scheduler: { httpIntervalSeconds: 900 },
+  });
+  assert.equal(out.a, 300, 'per-check numeric 600s clamps down to 300s');
+  const unit = httpIntervalSeconds({
+    http: [{ name: 'b', url: 'http://b', intervalSeconds: '10m' }],
+  });
+  assert.equal(unit.b, 300, 'per-check unit string "10m" clamps down to 300s');
+  const tlsOut = tlsIntervalSeconds({
+    tls: [{ name: 'api', host: 'api.example.com', intervalSeconds: '1h' }],
+  });
+  assert.equal(tlsOut.api, 300, 'tls unit string "1h" clamps down to 300s');
+  assert.deepEqual(schedulerIntervals({ scheduler: { httpIntervalSeconds: 3600, tlsIntervalSeconds: 7200, apmIntervalSeconds: '2h' } }),
+    { httpIntervalSeconds: 300, tlsIntervalSeconds: 300, apmIntervalSeconds: 300 },
+    'scheduler-wide keys over the maximum all clamp down to 300s');
 });
 
 test('config: unnamed targets are keyed by url (http) / host:port (tls)', () => {
