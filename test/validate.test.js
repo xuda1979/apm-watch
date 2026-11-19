@@ -55,6 +55,18 @@ test('validate: unit-string intervals agree with the scheduler parser', () => {
   assert.match(bad.join('\n'), /intervalSeconds/);
 });
 
+test('validate: tls intervalSeconds typos that would wreck the cert-fetch cadence are caught', () => {
+  // the tls loop runs its own intervalSeconds pass (validate.js ~73-75); a
+  // typo would silently re-scan certs at an unintended rate. Only the http
+  // variant had a regression test before.
+  for (const v of [0, -1, 'every-so-often']) {
+    const errs = validateConfig({ http: [], tls: [{ host: 'example.com', intervalSeconds: v }] });
+    assert.match(errs.join('\n'), /tls\[0\]\.intervalSeconds/, `tls intervalSeconds=${JSON.stringify(v)} must be rejected`);
+  }
+  const ok = validateConfig({ http: [], tls: [{ host: 'example.com', intervalSeconds: '12h' }] });
+  assert.deepEqual(ok, [], 'valid unit-string tls intervalSeconds is accepted');
+});
+
 test('validate: no checks at all (no apm.collect) is still rejected', () => {
   const errs = validateConfig({});
   assert.deepEqual(errs, ['config has no checks: add an `http` or `tls` array (or enable `apm.collect`)']);
@@ -187,6 +199,21 @@ test('validate: notifications.repeatIntervalSeconds typos that would corrupt the
 test('validate: non-object section is caught', () => {
   const errs = validateConfig({ http: [], tls: [], scheduler: 'daily' });
   assert.match(errs.join('\n'), /config\.scheduler must be an object/);
+});
+
+test('validate: non-object notifications/ui/store sections are caught', () => {
+  for (const key of ['notifications', 'ui', 'store']) {
+    // typeof guard is `!= null`, so a bare string (not null/undefined) is the
+    // trigger value — the object loop in validate.js pushes one curated error.
+    for (const v of ['nope', 1, true]) {
+      const errs = validateConfig({ http: [], tls: [], [key]: v });
+      assert.match(
+        errs.join('\n'),
+        new RegExp(`config\\.${key} must be an object`),
+        `${key}=${JSON.stringify(v)} must be rejected`,
+      );
+    }
+  }
 });
 
 test('validate: non-array http entry fail-fast during CLI boot', () => {
