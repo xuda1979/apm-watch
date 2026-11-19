@@ -440,9 +440,78 @@ test('engine: configSeconds and retentionDays/toDays poison inputs fall back to 
   assert.equal(configSeconds('5x'), Number.NaN); // malformed unit string -> NaN
   assert.equal(configSeconds('1.5h'), 5400);
   assert.equal(configSeconds(90), 90);
+  assert.equal(configSeconds('5'), 5, 'bare number string defaults to seconds (unit || "s")');
+  assert.equal(toDays('5'), 5, 'bare number string defaults to days (unit || "d")');
   assert.equal(retentionDays({ retentionDays: [] }), 7, 'non-numeric retention falls back to the 7d default'); // toDays NaN -> 7
   assert.equal(retentionDays({ retentionDays: '48h' }), 2);
   assert.equal(retentionDays({ retentionDays: '1w' }), 7);
   assert.equal(retentionDays({}), 7);
   assert.equal(toDays(-1), -1, 'raw toDays passes negatives through (caller guards)');
+});
+
+test('engine: maybeAlert 按 repeatIntervalSeconds 去重，状态变化/freshen/恢复按文档放行', async () => {
+  const store = new Store(':memory:');
+  // 1 秒去重窗口:引擎用真的 Date.now() 判定 freshen,所以窗口越过靠真实
+  // 时间推进(唯一一处不能靠 store clock 注入的时序)
+  const engine = new Engine({ store, config: { notifications: { repeatIntervalSeconds: 1 } }, log: () => {} });
+  const r = (status) => ({ kind: 'http', target: 'svc', status, detail: `d:${status}` });
+
+  const first = engine.maybeAlert(r('warn'));
+  assert.equal(first.send, true, '首次 warn 立即发送');
+  assert.equal(engine.alertState.get('http:svc').count, 1, '首次告警 count 计数为 1');
+
+  assert.equal(engine.maybeAlert(r('warn')).send, false, 'repeat 窗口内相同状态被去重抑制');
+  assert.equal(engine.maybeAlert(r('warn')).send, false, '窗口内连续重复 warn 持续抑制');
+  assert.equal(engine.alertState.get('http:svc').count, 3, '被抑制的告警仍然累计 count(暴露频率)');
+
+  assert.equal(engine.maybeAlert(r('error')).send, true, '状态升级 warn->error 立即重新发送');
+  assert.equal(engine.maybeAlert(r('error')).send, false, '窗口内重复 error 也被抑制');
+  assert.equal(engine.alertState.get('http:svc').status, 'error');
+
+  // freshen:越过 repeat 窗口后相同状态重新发送
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  assert.equal(engine.maybeAlert(r('error')).send, true, '越过 repeatIntervalSeconds 后同状态重新发送');
+
+  // 从错误状态恢复为 ok:发送恢复告警并把 count 清零
+  const rec = engine.maybeAlert(r('ok'));
+  assert.equal(rec.send, true, 'error->ok 恢复时发送 RECOVERED 告警');
+  assert.equal(rec.status, 'ok');
+  assert.equal(engine.alertState.get('http:svc').count, 0, '恢复后 count 归零');
+  assert.equal(engine.maybeAlert(r('ok')).send, false, 'ok 状态不重复告警');
+  store.close();
+});
+
+test('engine: 无默认参数构造回退到内存 store 与空 config', () => {
+  // config falsy -> this.config || {};store falsy -> new Store(':memory:')
+  const engine = new Engine({ log: () => {} });
+  assert.deepEqual(engine.config, {}, '不传 config 时回退为空对象');
+  assert.ok(engine.store, '不传 store 时自动创建默认内存 store');
+  assert.equal(engine.alertState.size, 0, '空 config 不会凭空产生告警状态');
+  // 未记录任何健康检查时 persistHealth 回退 status 为 ok(health.status || "ok")
+  engine.persistHealth();
+  assert.equal(engine.store.getMeta('health').value.status, 'ok', '无检查记录时自健康状态回退 ok');
+  engine.store.close();
+});
+
+test('engine: 未命名 tls pemFile 检查从文件路径派生 target', async (t) => {
+  const { startHttpsServer } = await import('./helpers/fixtures.js');
+  const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const ok = await startHttpsServer({ days: 200 });
+  t.after(ok.close);
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'apmw-pem-noname-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const okFile = path.join(dir, 'ok.pem');
+  writeFileSync(okFile, ok.cert.crtPem);
+
+  const store = new Store(':memory:');
+  const engine = new Engine({ store, config: {}, log: () => {} });
+  // 只给 pemFile 不给 name:target 派生走 cfg.name || (cfg.pemFile ? ...)
+  const res = await engine.runTlsCheck({ pemFile: okFile });
+  assert.equal(res.status, 'ok');
+  assert.equal(res.target, okFile, '未命名 pemFile 检查以文件路径为 target');
+  assert.ok(res.chain.length >= 1, '本地 bundle 仍解析出证书链');
+  store.close();
 });
