@@ -527,6 +527,62 @@ test('engine: 无默认参数构造回退到内存 store 与空 config', () => {
   engine.store.close();
 });
 
+test('engine: http buildTasks closure dedups identical alerts inside the repeat window', async (t) => {
+  const bad = await startHttpServer({ '/bad': { status: 503, body: 'down' } });
+  t.after(bad.close);
+
+  const store = new Store(':memory:');
+  const alerts = [];
+  const engine = new Engine({
+    store,
+    config: {
+      http: [{ name: 'dedup-task', url: bad.url + '/bad', assert: { statusCode: 200 } }],
+      notifications: { desktop: false }, // default 3600s repeat window
+    },
+    log: () => {},
+  });
+  engine.notifyFn = async (r) => { alerts.push(r); return [{ ok: true }]; };
+
+  // Drive the scheduler-facing closure directly (same path the scheduler grid
+  // takes): the first run must send (no alert state yet), a second run with the
+  // identical error status inside the repeat window must be dedup-suppressed by
+  // maybeAlert, so engine.js:284's `if (a.send)` takes its falsy half.
+  const task = engine.buildTasks().find((t) => t.id === 'http:dedup-task');
+  assert.ok(task, 'http task registered');
+  await task.run();
+  await task.run();
+
+  assert.equal(alerts.length, 1, 'second run inside the repeat window is dedup-suppressed');
+  assert.equal(alerts[0].status, 'error');
+  const rows = store.db.prepare("SELECT * FROM states WHERE target = 'dedup-task'").all();
+  assert.equal(rows.length, 2, 'each task run persists its own state row');
+  assert.equal(rows[0].status, 'error');
+  assert.equal(rows[1].status, 'error');
+  store.close();
+});
+
+test('engine: buildTasks derives ids for unnamed http/tls entries from url and host:port/pemFile', () => {
+  const store = new Store(':memory:');
+  const http = new Engine({ store, config: { http: [{ url: 'http://u.local/x' }] }, log: () => {} });
+  assert.ok(
+    http.buildTasks().some((t) => t.id === 'http:http://u.local/x'),
+    'unnamed http entry id falls back to the url',
+  );
+
+  const tls = new Engine({ store, config: { tls: [{ host: 'h.test', port: 8443 }] }, log: () => {} });
+  assert.ok(
+    tls.buildTasks().some((t) => t.id === 'tls:h.test:8443'),
+    'unnamed pem-less tls entry id falls back to host:port',
+  );
+
+  const pem = new Engine({ store, config: { tls: [{ pemFile: '/tmp/bundle.pem' }] }, log: () => {} });
+  assert.ok(
+    pem.buildTasks().some((t) => t.id === 'tls:/tmp/bundle.pem'),
+    'unnamed pemFile tls entry id falls back to the pem path',
+  );
+  store.close();
+});
+
 test('engine: 未命名 tls pemFile 检查从文件路径派生 target', async (t) => {
   const { startHttpsServer } = await import('./helpers/fixtures.js');
   const { writeFileSync, mkdtempSync, rmSync } = await import('node:fs');

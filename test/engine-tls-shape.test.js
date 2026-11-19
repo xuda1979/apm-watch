@@ -15,13 +15,14 @@ import assert from 'node:assert/strict';
 
 let nextReport = {};
 let fetchError = null;
+let netArgs = null;
 await mock.module('../lib/check-tls.js', {
   namedExports: {
     fetchCertChain: async () => {
       if (fetchError) throw new Error(fetchError);
       return { certs: [] };
     },
-    netChainToReport: () => nextReport,
+    netChainToReport: (args) => { netArgs = args; return nextReport; },
     inspectPemChain: () => nextReport,
   },
 });
@@ -95,4 +96,37 @@ test('engine-tls-shape: cert-fetch rejection lands in the catch-shape report', a
   assert.equal(row.status, 'error');
   assert.equal(row.chain_json, null);
   assert.equal(row.valid_chain, 0);
+});
+
+test('engine-tls-shape: missing cfg.port falls back to 443 for the chain fetch', async () => {
+  nextReport = { host: 'shape.test', port: 443, daysRemaining: 42, chain: [], validChain: null, leafSubject: null };
+  const engine = freshEngine();
+  const res = await engine.runTlsCheck({ name: 'shape-no-port', host: 'shape.test' });
+  assert.equal(netArgs.port, 443, 'cfg.port || 443 picks the default port');
+  assert.equal(res.status, 'ok');
+  assert.equal(res.port, 443, 'report port surfaces on the result');
+  const row = engine.store.latestStates().find((s) => s.target === 'shape-no-port');
+  assert.equal(row.status, 'ok');
+});
+
+test('engine-tls-shape: null daysRemaining without error -> "no certificate" error', async () => {
+  nextReport = { host: 'shape.test', port: 443, daysRemaining: null, chain: [], validChain: null, leafSubject: null };
+  const engine = freshEngine();
+  const res = await engine.runTlsCheck({ name: 'shape-nocert', host: 'shape.test', port: 443 });
+  assert.equal(res.status, 'error');
+  assert.equal(res.detail, 'no certificate');
+  const row = engine.store.latestStates().find((s) => s.target === 'shape-nocert');
+  assert.equal(row.status, 'error');
+  assert.equal(row.detail, 'no certificate');
+});
+
+test('engine-tls-shape: non-positive daysRemaining -> EXPIRED error', async () => {
+  nextReport = { host: 'shape.test', port: 443, daysRemaining: -5, chain: [], validChain: null, leafSubject: null };
+  const engine = freshEngine();
+  const res = await engine.runTlsCheck({ name: 'shape-expired', host: 'shape.test', port: 443 });
+  assert.equal(res.status, 'error');
+  assert.equal(res.detail, 'EXPIRED 5d ago');
+  const row = engine.store.latestStates().find((s) => s.target === 'shape-expired');
+  assert.equal(row.status, 'error');
+  assert.equal(row.days_remaining, -5);
 });
