@@ -162,6 +162,28 @@ test('config: non-finite interval falls back to the kind default (http 60s, tls 
   assert.equal(tlsOut.api, 300, 'tls non-finite interval falls back to 300s');
 });
 
+test('config: unnamed targets are keyed by url (http) / host:port (tls)', () => {
+  // The store-target key convention: http falls back to the url, tls to
+  // host:port (443 default) when no name is configured.
+  const out = httpIntervalSeconds({
+    http: [{ url: 'http://anon.example' }],
+  });
+  assert.equal(out['http://anon.example'], 60, 'unnamed http target is keyed by url');
+  const tlsOut = tlsIntervalSeconds({
+    tls: [{ host: 'anon.example' }],
+  });
+  assert.equal(tlsOut['anon.example:443'], 300, 'unnamed tls target is keyed by host:443');
+});
+
+test('config: interval resolvers are empty when the section is absent', () => {
+  // The `config?.http` / `config?.tls` optional-chaining halves: a resolver
+  // called without a config (or with an empty one) yields no entries instead
+  // of throwing.
+  assert.deepEqual(httpIntervalSeconds(undefined), {}, 'absent config yields no http intervals');
+  assert.deepEqual(tlsIntervalSeconds(undefined), {}, 'absent config yields no tls intervals');
+  assert.deepEqual(httpIntervalSeconds({}), {}, 'empty config yields no http intervals');
+});
+
 test('config: defaultConfigFile finds apm-watch.json in the cwd', () => {
   withDir((dir) => {
     writeConf(dir, JSON.stringify({ http: [{ name: 'found', url: 'http://found' }] }));
