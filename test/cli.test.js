@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { worstStatus, onceJsonRow } from '../bin/apm-watch.js';
+import { Store } from '../lib/store.js';
 import { startHttpServer, startHttpsServer } from './helpers/fixtures.js';
 
 const BIN = fileURLToPath(new URL('../bin/apm-watch.js', import.meta.url));
@@ -196,6 +197,32 @@ test('cli: run --ui tui starts under a real TUI and stops cleanly on SIGTERM', a
   const code = await exit;
   exited = true;
   assert.equal(code, 0, 'TUI stop() exits 0 (graceful, so coverage flushes)');
+});
+
+test('cli: once surfaces a pre-existing monitor up-span in hours (fmtDuration hour branch)', async (t) => {
+  // fmtDuration's hour branch (bin/apm-watch.js) renders `2h 0m`-style up-spans.
+  // A zero-check `once` (http: []) never calls engine.persistHealth(), so the
+  // health meta a previous run (or manual seed) left in the store survives to
+  // the report line — pre-seed a backdated uptimeSince to pin the hour branch.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-seed-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const db = path.join(dir, 'seed.db');
+  const store = new Store(db);
+  const uptimeSince = Date.now() - 7_200_000; // 2h back
+  store.setMeta('health', { status: 'ok', uptimeSince, lastCheckAt: Date.now() });
+  store.close();
+
+  const cfg = path.join(dir, 'seed.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [],
+    store: { path: db },
+  }));
+
+  const { code, stdout } = await runOnce(cfg);
+  assert.equal(code, 0, 'zero configured checks still exits 0');
+  // The seeded span survives: `up 2h 0m` (resilient to a few seconds of drift —
+  // the 7_200_000ms backdate keeps min >= 119, so the minute fraction is 0m).
+  assert.match(stdout, /health ok · up 2h \d+m · last check \d{1,2}:\d{2}:\d{2}/, `seeded up-span renders in hours\nstdout:\n${stdout}`);
 });
 
 test('cli: once exits 0 when every check is ok', async (t) => {
