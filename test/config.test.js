@@ -225,3 +225,38 @@ test('config: defaultConfigFile finds apm-watch.json in the cwd', () => {
     }
   });
 });
+
+test('config: default config resolution order spans .apm-watch.json, precedence, and the no-file default', () => {
+  const realCwd = process.cwd;
+  process.cwd = () => dir;
+  // (dir assigned per-branch below; the rebind only needs to read it lazily)
+  let dir = '.';
+  try {
+    // (a) dot-file alone -> the documented ".apm-watch.json" fallback is found.
+    withDir((d) => {
+      dir = d;
+      writeFileSync(path.join(d, '.apm-watch.json'), JSON.stringify({ http: [{ name: 'dot', url: 'http://dot' }] }));
+      const cfg = loadConfig();
+      assert.equal(cfg.http[0]?.name, 'dot', '.apm-watch.json resolves when apm-watch.json is absent');
+    });
+    // (b) both present -> apm-watch.json wins the scan order.
+    withDir((d) => {
+      dir = d;
+      writeConf(d, JSON.stringify({ http: [{ name: 'plain', url: 'http://plain' }] }));
+      writeFileSync(path.join(d, '.apm-watch.json'), JSON.stringify({ http: [{ name: 'dot', url: 'http://dot' }] }));
+      const cfg = loadConfig();
+      assert.equal(cfg.http[0]?.name, 'plain', 'apm-watch.json takes precedence over .apm-watch.json');
+    });
+    // (c) empty cwd -> defaultConfigFile() null -> loadConfig() emits the empty
+    // config shape instead of throwing (README: "缺省时使用空配置").
+    withDir((dir2) => {
+      dir = dir2;
+      assert.equal(defaultConfigFile(), null, 'no config file in cwd -> null default');
+      const cfg = loadConfig();
+      assert.deepEqual(cfg, { http: [], tls: [], apm: {}, notifications: {}, scheduler: {}, ui: { port: 0 } },
+        'absent config falls back to the empty-config shape');
+    });
+  } finally {
+    process.cwd = realCwd;
+  }
+});
