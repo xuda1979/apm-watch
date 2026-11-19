@@ -904,3 +904,142 @@ console.log('TUI_STARTED');
   }
 });
 
+test('ui: tui snapshotStates folds a string-throwing latestStates to an empty snapshot (header + frame)', async (t) => {
+  const store = new Store(':memory:');
+  // header path drives snapshotStates(): a torn read folds to an empty snapshot
+  // (zero counts + overall 'unknown'), and the row path folds to the waiting
+  // placeholder — the frame never escapes
+  store.setMeta('health', { status: 'ok', uptimeSince: Date.now() - 120e3, lastCheckAt: Date.now() });
+  store.latestStates = () => { throw 'torn states read'; };
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /ok 0 warn 0 err 0 · overall unknown/, 'empty folded snapshot reports an unknown overall');
+  assert.match(out, /\(no checks yet — waiting for first run\)/, 'the row path folds the same torn read to the placeholder');
+});
+
+test('ui: tui renderError formats a bare-string throw and a dead display never re-throws', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  // a bare string (no .message property) exercises the `?? err` fallback at both
+  // renderError format sites; the history read is unguarded so it escapes the
+  // frame into the renderError degrade path
+  store.history = () => { throw 'torn history read'; };
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const errs = [];
+  let writeThrows = false;
+  const origWrite = process.stdout.write;
+  const origErr = console.error;
+  process.stdout.write = (s) => { if (writeThrows) throw new Error('display closed'); out += s; return true; };
+  console.error = (...a) => { errs.push(a.join(' ')); };
+  try {
+    tui.render();
+    assert.equal(errs.length, 1, 'one clean stderr line, not a raw stack');
+    assert.match(errs[0], /^\[apm-watch\] tui: torn history read$/, 'bare-string err formats through ?? err');
+    assert.match(out, /\[apm-watch\] tui: render degraded: torn history read/, 'the degraded frame still writes to the display');
+
+    // now the display itself is dead: renderError must swallow the write failure
+    // and the render loop keeps ticking (no re-throw out of render())
+    writeThrows = true;
+    tui.render();
+    assert.equal(errs.length, 2, 'each degraded render still logs exactly one stderr line');
+  } finally {
+    process.stdout.write = origWrite;
+    console.error = origErr;
+  }
+});
+
+test('ui: tui drops a torn recent-events read without killing the frame', async (t) => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  store.recentEvents = () => { throw 'events torn'; };
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /api  http:ok:12ms/, 'the row frame still renders');
+  assert.doesNotMatch(out, /── recent events ──/, 'the torn events block is folded, not escaped');
+});
+
+test('ui: tui header formats null and sub-minute uptime via fmtAgo', async (t) => {
+  const store = new Store(':memory:');
+  t.after(() => store.close());
+  for (const { uptimeSince, expected } of [
+    { uptimeSince: null, expected: 'up —' },
+    { uptimeSince: Date.now() - 30_000, expected: 'up 30s ago' },
+  ]) {
+    store.setMeta('health', { status: 'ok', uptimeSince, lastCheckAt: Date.now() });
+    const tui = new Tui({ store, intervalMs: 1000 });
+    let out = '';
+    const orig = process.stdout.write;
+    process.stdout.write = (s) => { out += s; return true; };
+    try { tui.render(); } finally { process.stdout.write = orig; }
+    assert.match(out, new RegExp(expected.replace(/ /g, '\\s+')), `uptime ${String(uptimeSince)} renders ${expected}`);
+  }
+});
+
+test('ui: tui counts and weights a snapshot status outside ok/warn/error/unknown', async (t) => {
+  const store = new Store(':memory:');
+  store.setMeta('health', { status: 'ok', uptimeSince: Date.now() - 60e3, lastCheckAt: Date.now() });
+  store.saveState({ target: 'svc', kind: 'apm', status: 'pending', detail: 'warming up' });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  // the foreign status falls into the ?? 0 counts slot and weight 0, surfacing
+  // as the bare `?` worst-status marker and the snapshot overall word
+  assert.match(out, /overall pending/, 'the foreign status rides the overall worst-status word');
+  assert.match(out, /  \? svc\s+apm:warming up/, 'foreign status renders the bare ? row marker');
+});
+
+test('ui: tui chain path renders missing-field fallbacks and the self-signed marker', async (t) => {
+  const store = new Store(':memory:');
+  // cert2 has only subject:null + selfSigned:true: every per-cert validity field
+  // falls back to the em-dash, shortName falls back twice, and the self-signed
+  // marker shows (the full-field + non-self-signed halves are pinned by the
+  // fuller chain render test above)
+  store.saveState({ target: 'api', kind: 'tls', status: 'ok', detail: 'cert holds', leafSubject: '/CN=full.test', validChain: true, chain: [
+    { subject: '/CN=full.test', validFrom: '2025-01-01T00:00:00.000Z', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 12, selfSigned: false },
+    { subject: null, selfSigned: true },
+  ] });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /chain: CN=full\.test -> \?/, 'null subject shortNames to the ? fallback');
+  assert.match(out, /valid 2025-01-01T00:00:00\.000Z notAfter 2030-01-01T00:00:00\.000Z 12d \| valid — notAfter — — \(self-signed\)/, 'missing per-cert fields render the em-dash; selfSigned adds the marker');
+});
+
+test('ui: tui apm history renders em-dash fallbacks when no series were recorded', async (t) => {
+  const store = new Store(':memory:');
+  // apm target with a parked state but NO p50/p95/errorRate metric series:
+  // last([]) and spark([]) both fold to the em-dash
+  store.saveState({ target: 'svc', kind: 'apm', status: 'ok', latencyMs: 40, detail: 'p50=20ms p95=40ms' });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /── apm history ──/);
+  assert.match(out, /svc: p50 —ms  p95 —ms  —/, 'empty series render the em-dash in both label and spark slots');
+  assert.doesNotMatch(out, /\n    err /, 'no error-rate series, so the err sub-line is omitted');
+});
+
