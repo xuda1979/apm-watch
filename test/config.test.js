@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig } from '../lib/config.js';
+import { loadConfig, httpIntervalSeconds, tlsIntervalSeconds, defaultConfigFile } from '../lib/config.js';
 
 const SMTP_KEYS = ['SMTP_HOST', 'SMTP_FROM', 'SMTP_TO', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS'];
 
@@ -145,4 +145,35 @@ test('config: partial SMTP env does not enable the email channel', () => {
   } finally {
     for (const k of SMTP_KEYS) delete process.env[k];
   }
+});
+
+test('config: non-finite interval falls back to the kind default (http 60s, tls 300s)', () => {
+  // A typo'd string ("2x") fails configSeconds' grammar and returns NaN, which
+  // must not escape the scheduler window — the old pre-fallback NaN half.
+  const out = httpIntervalSeconds({
+    http: [{ name: 'a', url: 'http://a', intervalSeconds: '2x' }],
+    scheduler: { httpIntervalSeconds: '1x' },
+  });
+  assert.equal(out.a, 60, 'http non-finite interval falls back to 60s');
+  const tlsOut = tlsIntervalSeconds({
+    tls: [{ name: 'api', host: 'api.example.com', intervalSeconds: '3x' }],
+    scheduler: { tlsIntervalSeconds: '5x' },
+  });
+  assert.equal(tlsOut.api, 300, 'tls non-finite interval falls back to 300s');
+});
+
+test('config: defaultConfigFile finds apm-watch.json in the cwd', () => {
+  withDir((dir) => {
+    writeConf(dir, JSON.stringify({ http: [{ name: 'found', url: 'http://found' }] }));
+    // Temporarily rebind cwd so defaultConfigFile scans the temp dir; fs
+    // lookups are dynamic so the real existsSync sees the file we wrote.
+    const realCwd = process.cwd;
+    process.cwd = () => dir;
+    try {
+      const cfg = loadConfig();
+      assert.equal(cfg.http[0]?.name, 'found', 'resolves and parses the cwd config when no explicit file is given');
+    } finally {
+      process.cwd = realCwd;
+    }
+  });
 });
