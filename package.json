@@ -14,7 +14,7 @@
     "start": "node bin/apm-watch.js",
     "demo": "node bin/apm-watch.js demo",
     "tui": "node bin/apm-watch.js run --ui tui --ui-port 0",
-    "test": "node --test test/*.test.js",
+    "test": "node --experimental-test-module-mocks --test test/*.test.js",
     "test:memory": "node test/memory.test.js"
   },
   "dependencies": {},
