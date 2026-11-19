@@ -163,10 +163,12 @@ function runCli(...args) {
   });
 }
 
-test('cli: --version prints the version and does not start the monitor', async () => {
-  const { code, stdout } = await runCli('--version');
-  assert.equal(code, 0);
-  assert.match(stdout.trim(), /^1\.0\.0$/);
+test('cli: --version/-V print the version and do not start the monitor', async () => {
+  for (const arg of ['--version', '-V']) {
+    const { code, stdout } = await runCli(arg);
+    assert.equal(code, 0, `version via ${arg}`);
+    assert.match(stdout.trim(), /^1\.0\.0$/, `version body for ${arg}`);
+  }
 });
 
 test('cli: help/-h/--help print usage and exit 0', async () => {
