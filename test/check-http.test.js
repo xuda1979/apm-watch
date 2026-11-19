@@ -103,3 +103,43 @@ test('http checker: latency warn does not mask hard errors', async (t) => {
   assert.equal(res.bodyIncludes, null, 'status-only assert leaves the body marker null');
   assert.match(res.detail, /expected status 200/);
 });
+
+test('http checker: redirect policy and request body forward to the fetch call', async () => {
+  // stub the fetch fn (checkEndpoint's documented opts hook) so the forwarded
+  // options object can be pinned exactly — no real network or redirect needed
+  const calls = [];
+  async function stubFetch(url, opts) {
+    calls.push({ url, opts });
+    // a minimal Response-shaped object: body null means the no-assert branch
+    // skips the body cancel entirely (res.body?.cancel?.(...) is a no-op)
+    return { status: 200, text: async () => 'rendered', body: null };
+  }
+
+  // configured redirect resolves to `follow` (the line-46 forward half)
+  const follow = await checkEndpoint(
+    { url: 'http://bucket.test/redir', redirect: true, assert: { statusCode: 200 } },
+    { fetchFn: stubFetch },
+  );
+  assert.equal(follow.status, 'ok');
+  assert.equal(calls[0].opts.redirect, 'follow', 'configured redirect: true resolves to follow');
+
+  // a configured body is forwarded verbatim with the normalized verb
+  const post = await checkEndpoint(
+    { url: 'http://bucket.test/pay', method: 'post', body: '{"a":1}', assert: { statusCode: 200 } },
+    { fetchFn: stubFetch },
+  );
+  assert.equal(post.status, 'ok');
+  assert.equal(calls[1].opts.body, '{"a":1}', 'a configured body forwards to the fetch call');
+  assert.equal(calls[1].opts.method, 'POST', 'the verb is normalized before forwarding');
+
+  // unconfigured complement halves stay pinned: manual redirect, no body key,
+  // empty headers object
+  const plain = await checkEndpoint(
+    { url: 'http://bucket.test/plain', assert: { statusCode: 200 } },
+    { fetchFn: stubFetch },
+  );
+  assert.equal(plain.status, 'ok');
+  assert.equal(calls[2].opts.redirect, 'manual', 'an unconfigured redirect stays manual');
+  assert.ok(!('body' in calls[2].opts), 'no body configured -> the fetch call carries no body key');
+  assert.deepEqual(calls[2].opts.headers, {}, 'headers default to an empty object');
+});
