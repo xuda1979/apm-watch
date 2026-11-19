@@ -447,17 +447,27 @@ test('export: renderStatusPage falls back on hand-built rows without availabilit
         }],
       }, // chain without a validFrom date -> tooltip em-dash fallback
       apm: null,
+    }, {
+      target: 'nochain',
+      http: null,
+      tls: { status: 'warn', detail: 'degrades' }, // no chain key at all
+      apm: null,
     }],
   };
   const html = renderStatusPage(base);
   assert.match(html, />bare<\/td>/, 'the hand-built row still renders');
+  assert.match(html, />nochain<\/td>/, 'the row without a chain still renders');
   assert.match(html, /99\.5% uptime/, 'uptime pct renders without the uptime_ms breakdown');
   assert.match(html, /up 0s/, 'missing uptimeSince degrades to up-since-lastCheck');
   assert.match(html, /notif webhook email/, 'off and on notification halves both render');
   assert.match(html, /repeat 1h 0m/, 'missing repeat interval resolves to the 3600s default');
   assert.doesNotMatch(html, /keep \d+d/, 'no store block -> no retention meta');
   assert.doesNotMatch(html, /history /, 'no ui block -> no history meta');
-  assert.doesNotMatch(html, /title=/, 'empty chain -> no tooltip attribute');
+  // the nonempty chain renders a tooltip with the missing-validFrom em-dash
+  // fallback (`valid —  notAfter ...`); the chain-less row renders no tooltip
+  assert.match(html, /title="\/CN=box\.test -&gt; \/CN=ca\.test  valid —  notAfter 2030-01-01T00:00:00\.000Z  30d"/, 'tooltip renders a chain cert with a missing validFrom as an em dash');
+  const htmlBare = renderStatusPage({ ...base, targets: [{ target: 'nochain', http: null, tls: { status: 'warn', detail: 'degrades' }, apm: null }] });
+  assert.doesNotMatch(htmlBare, /title=/, 'row without a chain renders no tooltip attribute');
   const html2 = renderStatusPage({ ...base, notifications: {} });
   assert.match(html2, /notif none/, 'all-off channels render as none');
 });
