@@ -1068,6 +1068,60 @@ test('cli: run boots the full monitor loop and serves live state over web', asyn
   assert.match(page, /api\/states/);
 });
 
+test('cli: bare invocation with no subcommand defaults to run (README:72-73)', async (t) => {
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'bare-run.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'bare-run.db') },
+    notifications: { desktop: false },
+  }));
+
+  // README:72-73 documents the no-subcommand default: `--version` prints and
+  // exits, "不带则默认启动 `run`" — a bare invocation dispatches to cmdRun via
+  // bin/apm-watch.js:132 `const cmd = args._[0] || 'run'`. Every other monitor
+  // test passes the `run` token explicitly, so a regression that routes bare
+  // invocations to `serve` (or rejects them) would go green uncaught. The
+  // discriminator: only cmdRun starts the engine, so a live state row must
+  // appear that a serve-routed bare invocation could never produce.
+  const child = spawn(process.execPath, [BIN, '--config', cfg, '--ui', 'web', '--ui-port', '0'], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`bare invocation did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // the engine's first scheduled check must land within the poll window
+  let states = null;
+  for (let i = 0; i < 30 && !states; i++) {
+    const res = await fetch(`http://127.0.0.1:${port}/api/states`);
+    const data = await res.json();
+    if (data.states.length) states = data;
+    else await new Promise((r) => setTimeout(r, 200));
+  }
+  assert.ok(states, `bare invocation ran the monitor engine (a live row appeared)\nstderr:\n${stderr}`);
+  const ok = states.states.find((s) => s.target === 'ok-svc');
+  assert.ok(ok, 'scheduled check result served by the bare-run API');
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.status_code, 200, 'numeric status_code served on the bare-run path');
+
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, 'bare run exits 0 after SIGTERM (graceful teardown)');
+});
+
 test('cli: demo agent feeds the run monitor and its apm state surfaces over web', async (t) => {
   const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
