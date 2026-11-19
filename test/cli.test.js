@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createServer as createNetServer } from 'node:net';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -129,6 +130,72 @@ test('cli: --version prints the version and does not start the monitor', async (
   const { code, stdout } = await runCli('--version');
   assert.equal(code, 0);
   assert.match(stdout.trim(), /^1\.0\.0$/);
+});
+
+test('cli: help/-h/--help print usage and exit 0', async () => {
+  for (const arg of ['help', '-h', '--help']) {
+    const { code, stdout } = await runCli(arg);
+    assert.equal(code, 0, `help via ${arg}`);
+    assert.match(stdout, /Usage:/, `usage body for ${arg}`);
+    assert.match(stdout, /apm-watch v1\.0\.0/, `version banner for ${arg}`);
+  }
+});
+
+test('cli: an unknown command exits 2 with a curated message', async () => {
+  const { code, stdout, stderr } = await runCli('bogus');
+  assert.equal(code, 2);
+  assert.match(stderr, /unknown command: bogus/);
+  assert.match(stdout, /Usage:/, 'usage still prints after the error');
+});
+
+test('cli: run --ui tui starts under a real TUI and stops cleanly on SIGTERM', async (t) => {
+  // The TUI branch (bin/apm-watch.js cmdRun ui==='tui') only flushes its V8
+  // coverage when the child exits gracefully: lib/ui-tui.js registers SIGTERM
+  // handlers that route through stop() -> process.exit(0), unlike the demo/
+  // serve commands that die by default signal death. Spawn one, watch it come
+  // up with the apm intake server, then SIGTERM it and assert the clean exit.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-tui-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  // --apm-port 0 is falsy in cmdRun's `port || config || 8789` fallback, so
+  // grab a genuinely free port instead: bind port 0, read the allocation, close.
+  const probe = createNetServer();
+  const freePort = await new Promise((resolve, reject) => {
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => resolve(probe.address().port));
+  });
+  await new Promise((resolve) => probe.close(resolve));
+
+  const cfg = path.join(dir, 'tui.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true },
+    store: { path: path.join(dir, 'tui.db') },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'tui', '--apm-port', String(freePort)], {
+    cwd: path.dirname(BIN),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  let exited = null;
+  const exit = new Promise((resolve) => { child.on('close', (code) => resolve(code)); });
+  t.after(() => { if (child.exitCode === null && !exited) child.kill('SIGTERM'); });
+
+  await new Promise((resolve, reject) => {
+    const deadline = setTimeout(resolve, 5000);
+    child.stderr.on('data', () => {
+      if (/\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:\d+\/apm\/agent\/trace/.test(stderr)) { clearTimeout(deadline); resolve(); }
+    });
+    child.on('error', reject);
+    child.on('close', () => { clearTimeout(deadline); resolve(); });
+  });
+  assert.match(stderr, /\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:\d+\/apm\/agent\/trace/, `collector banner appears after startup\nstderr:\n${stderr}`);
+
+  child.kill('SIGTERM');
+  const code = await exit;
+  exited = true;
+  assert.equal(code, 0, 'TUI stop() exits 0 (graceful, so coverage flushes)');
 });
 
 test('cli: once exits 0 when every check is ok', async (t) => {
