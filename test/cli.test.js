@@ -1262,3 +1262,120 @@ test('cli: invalid config fails fast at boot with a one-line fatal', async (t) =
   assert.equal(badJson.code, 1, `json variant expects exit 1\nstderr:\n${badJson.stderr}`);
   assert.match(badJson.stderr, /\[apm-watch\] fatal: invalid config:/);
 });
+
+test('cli: serve honors the configured ui.port when --port is absent', async (t) => {
+  // cmdServe's port resolution (bin/apm-watch.js:737) is
+  // `args.port !== undefined ? args.port : config.ui?.port ?? 8787`: the
+  // config-side half (`config.ui?.port`) only fires when the operator omits
+  // --port and declares the port in config — README:103 documents
+  // `"ui": { "mode": "web", "port": 8787, ... }`. Pins that half end-to-end:
+  // serve boots on the configured port (not the 8787 default, not the flag
+  // path) and reports it on stdout.
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'serve-port.json');
+  // grab a genuinely free port so the configured port is bindable: bind port 0,
+  // read the allocation, close (same trick as the TUI test above)
+  const probe = createNetServer();
+  const cfgPort = await new Promise((resolve, reject) => {
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => resolve(probe.address().port));
+  });
+  await new Promise((resolve) => probe.close(resolve));
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'serve-port.db') },
+    ui: { port: cfgPort },
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+
+  // no --port flag: the configured ui.port drives the bind
+  const child = spawn(process.execPath, [BIN, 'serve', '--config', cfg], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const reported = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`serve did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  assert.equal(reported, cfgPort, 'serve bound the configured ui.port, not the 8787 default');
+  // and the configured-port instance actually serves the seeded store
+  const states = await (await fetch(`http://127.0.0.1:${reported}/api/states`)).json();
+  const ok = states.states.find((s) => s.target === 'ok-svc');
+  assert.ok(ok, 'seeded state served on the configured port');
+  assert.equal(ok.status, 'ok');
+
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, 'serve exits 0 after SIGTERM (graceful teardown)');
+});
+
+test('cli: serve without --port and without config.ui.port binds the 8787 default', async (t) => {
+  // bin/apm-watch.js:737 `args.port !== undefined ? args.port : config.ui?.port ?? 8787`:
+  // the flag side is pinned above (:934) and the config side by the test above,
+  // so this closes the last half — the bare 8787 fallback that fires only when
+  // the operator omits --port AND leaves ui.port out of config (README:103
+  // documents the default). A probe guards the assumption that 8787 is not
+  // occupied by some other process; if it is, the default path cannot be
+  // exercised here and we skip rather than flake.
+  const defaultPort = 8787;
+  const probe = createNetServer();
+  const free = await new Promise((resolve) => {
+    probe.once('error', () => resolve(false));
+    probe.listen(defaultPort, '127.0.0.1', () => resolve(true));
+  });
+  if (free) await new Promise((resolve) => probe.close(resolve));
+  if (!free) {
+    t.skip('port 8787 is occupied in this environment; cannot exercise the default serve port');
+    return;
+  }
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'serve-default-port.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'serve-default-port.db') },
+    // note: no ui section at all — neither ui.port nor mode
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+
+  const child = spawn(process.execPath, [BIN, 'serve', '--config', cfg], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const reported = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`serve did not report a port; stdout:\n${out}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  assert.equal(reported, defaultPort, 'serve bound the documented 8787 default with no port anywhere');
+  const states = await (await fetch(`http://127.0.0.1:${reported}/api/states`)).json();
+  const ok = states.states.find((s) => s.target === 'ok-svc');
+  assert.ok(ok, 'seeded state served on the default port');
+  assert.equal(ok.status, 'ok');
+
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, 'serve exits 0 after SIGTERM (graceful teardown)');
+});
