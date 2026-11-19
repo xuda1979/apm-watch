@@ -303,6 +303,12 @@ async function cmdDemo(args) {
   agent.log = log;
   console.log(`demo agent reporting to ${addr} every ${interval}ms`);
   console.log('ctrl-c to stop');
+  // Graceful teardown mirrors cmdRun: default signal death never lets the demo
+  // report anything sensible, and it robs spawned children of a V8 coverage
+  // flush (coverage only writes out on exit()) — stop the agent and exit 0.
+  process.stdin.resume?.();
+  process.on('SIGINT', () => { agent.stop(); process.exit(0); });
+  process.on('SIGTERM', () => { agent.stop(); process.exit(0); });
 }
 
 async function cmdOnce(args) {
@@ -733,6 +739,13 @@ async function cmdServe(args) {
     const addr = server.address();
     console.log(`web UI on http://127.0.0.1:${addr.port}/`);
   });
+  // Graceful teardown mirrors cmdRun: default signal death robs spawned
+  // children of a V8 coverage flush (coverage only writes out on exit()), and a
+  // stale zombie process holds the web port hostage — close the server and exit
+  // 0 so supervisors see a clean stop.
+  process.stdin.resume?.();
+  process.on('SIGINT', () => { server.close(); process.exit(0); });
+  process.on('SIGTERM', () => { server.close(); process.exit(0); });
 }
 
 if (IS_MAIN) {

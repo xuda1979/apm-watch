@@ -199,6 +199,58 @@ test('cli: run --ui tui starts under a real TUI and stops cleanly on SIGTERM', a
   assert.equal(code, 0, 'TUI stop() exits 0 (graceful, so coverage flushes)');
 });
 
+test('cli: tui collector start failure logs a one-line catch and still stops cleanly', async (t) => {
+  // A config-driven bad apm port trips the cmdRun TUI collector catch: the CLI
+  // flag path validates --apm-port, but config.apm.port rides through validate.js
+  // unvalidated (only tls.port is checked), and server.listen({port:99999})
+  // throws ERR_SOCKET_BAD_PORT synchronously inside the try, so the catch logs
+  // a one-line message instead of a raw stack. The TUI then runs on without a
+  // collector, and SIGTERM still exits 0.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-tui-badport-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'tui-badport.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true, port: 99999 },
+    store: { path: path.join(dir, 'tui-badport.db') },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'tui'], {
+    cwd: path.dirname(BIN),
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  let stderr = '';
+  let stdout = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  child.stdout.on('data', (d) => (stdout += d));
+  let exited = null;
+  const exit = new Promise((resolve) => { child.on('close', (code) => resolve(code)); });
+  t.after(() => { if (child.exitCode === null && !exited) child.kill('SIGTERM'); });
+
+  await new Promise((resolve, reject) => {
+    const deadline = setTimeout(resolve, 5000);
+    const check = () => {
+      // The collector catch fires before `new Tui(...)`/tui.start(), so the
+      // stderr line alone is not enough: a SIGTERM sent in that window hits the
+      // default signal death (exit null), not the TUI's graceful stop. Wait for
+      // the clear-screen sequence too — ui-tui.js start() writes it in the same
+      // synchronous tick that registers the SIGTERM/SIGINT handlers.
+      if (/\[apm-watch\] could not start APM collector:/.test(stderr)
+        && /\x1b\[2J/.test(stdout)) { clearTimeout(deadline); resolve(); }
+    };
+    child.stderr.on('data', check);
+    child.stdout.on('data', check);
+    child.on('error', reject);
+    child.on('close', () => { clearTimeout(deadline); resolve(); });
+  });
+  assert.match(stderr, /\[apm-watch\] could not start APM collector:/, `collector failure logged one-line\nstderr:\n${stderr}`);
+  assert.doesNotMatch(stderr, /at Server\.|Unhandled 'error'|RangeError\n\s+at /, 'no raw stack dump leaks from the collector catch');
+
+  child.kill('SIGTERM');
+  const code = await exit;
+  exited = true;
+  assert.equal(code, 0, 'SIGTERM still exits 0 when the collector could not start');
+});
+
 test('cli: once surfaces a pre-existing monitor up-span in hours (fmtDuration hour branch)', async (t) => {
   // fmtDuration's hour branch (bin/apm-watch.js) renders `2h 0m`-style up-spans.
   // A zero-check `once` (http: []) never calls engine.persistHealth(), so the
@@ -845,6 +897,13 @@ test('cli: serve boots the web UI over an existing store and serves states + pag
   const page = await (await fetch(`http://127.0.0.1:${port}/`)).text();
   assert.match(page, /apm-watch/);
   assert.match(page, /api\/states/);
+
+  // Graceful teardown mirrors cmdRun: SIGTERM routes serve through
+  // server.close() + process.exit(0), so supervisors see a clean 0 instead of
+  // a signal-death status (and the child's V8 coverage actually flushes).
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, 'serve exits 0 after SIGTERM (graceful teardown)');
 });
 
 test('cli: run boots the full monitor loop and serves live state over web', async (t) => {
@@ -945,6 +1004,13 @@ test('cli: demo agent feeds the run monitor and its apm state surfaces over web'
   assert.ok(Number.isFinite(apm.error_rate), 'error_rate numeric on the web api');
   // the spawned demo command confirmed successful posts to the collector
   assert.match(demoOut, /agent → \d+ms/, `demo agent logged a successful post:\n${demoOut}`);
+
+  // Graceful teardown mirrors cmdRun: SIGTERM routes demo through agent.stop()
+  // + process.exit(0), so supervisors see a clean 0 instead of a signal-death
+  // status (and the child's V8 coverage actually flushes).
+  const demoClose = new Promise((res) => demo.on('close', res));
+  demo.kill('SIGTERM');
+  assert.equal(await demoClose, 0, 'demo exits 0 after SIGTERM (graceful teardown)');
 });
 
 test('cli: a run monitor checks all three kinds (http/tls/apm) through one spawned process', async (t) => {
