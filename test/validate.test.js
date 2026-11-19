@@ -224,3 +224,21 @@ test('validate: non-array http entry fail-fast during CLI boot', () => {
 function requireFiller() {
   return { fill: (over) => ({ http: [], tls: [], apm: {}, notifications: {}, scheduler: {}, ui: {}, store: {}, ...over }) };
 }
+
+test('validate: garbage config shapes fail fast instead of throwing TypeError', () => {
+  // line 21 guard: a null/undefined/primitive config must yield the curated
+  // error immediately — anything else would throw a TypeError on the
+  // destructure below (validate.js 23). (An array is typeof "object", so it
+  // falls through to the no-checks path, not the must-be-an-object error.)
+  for (const v of [null, undefined, 'config', 42, true]) {
+    assert.deepEqual(
+      validateConfig(v),
+      ['config must be an object'],
+      `config=${JSON.stringify(v)} must be rejected`,
+    );
+  }
+  // tls written as an object (same typo class as the http counterpart, which
+  // already has a regression) is caught by the array guard here.
+  const errs = validateConfig({ http: [], tls: {} });
+  assert.match(errs.join('\n'), /config\.tls must be an array of tls check entries/);
+});
