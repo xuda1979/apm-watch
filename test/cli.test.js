@@ -942,7 +942,7 @@ test('cli: export --out FILE with no extension resolves to the base JSON form', 
   assert.equal(written.apm_watch_version, '1.0.0');
 });
 
-test('cli: top-level fatal prints a one-line message, no raw stack dump', async () => {
+test('cli: top-level fatal prints a one-line message, no raw stack dump', async (t) => {
   // `export --out /nonexistent-dir/x.json` and other boot-time failures must
   // surface a readable one-line error (cron/CI clean stderr), not a full
   // `[apm-watch] fatal: Error: ... at ...` stack dump.
@@ -953,6 +953,20 @@ test('cli: top-level fatal prints a one-line message, no raw stack dump', async 
   assert.equal(code, 1, `expects exit 1\nstderr:\n${stderr}`);
   assert.match(stderr, /\[apm-watch\] fatal: ENOENT/, 'one-line message names the failure');
   assert.doesNotMatch(stderr, /at (writeFileSync|cmdExport|main)/, 'no raw stack trace dumped');
+
+  // The same contract must hold when --out names an existing directory: the
+  // write fails with EISDIR, first in the boot order (after assertValidConfig),
+  // and must still be one exit-1 line naming the failure rather than an
+  // uncaught "illegal operation" stack that buries the operator-facing message.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-eisdir-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const childDir = spawn(process.execPath, [BIN, 'export', '--out', dir], { cwd: path.dirname(BIN) });
+  let dirErr = '';
+  childDir.stderr.on('data', (d) => (dirErr += d));
+  const dirCode = await new Promise((res) => childDir.on('close', res));
+  assert.equal(dirCode, 1, `directory --out expects exit 1\nstderr:\n${dirErr}`);
+  assert.match(dirErr, /\[apm-watch\] fatal: EISDIR/, 'one-line EISDIR message names the failure');
+  assert.doesNotMatch(dirErr, /at (writeFileSync|cmdExport|main)/, 'no raw stack trace dumped');
 });
 
 test('cli: serve boots the web UI over an existing store and serves states + page', async (t) => {
