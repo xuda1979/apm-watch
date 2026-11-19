@@ -1,8 +1,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { Engine } from '../lib/engine.js';
+import { Engine, configSeconds, toDays, retentionDays } from '../lib/engine.js';
 import { Store } from '../lib/store.js';
-import { startHttpServer, startHttpsServer } from './helpers/fixtures.js';
+import { startHttpServer, startHttpsServer, freePort } from './helpers/fixtures.js';
 
 test('engine: runs http + tls checks and persists + alerts on cert expiry', async (t) => {
   const httpSrv = await startHttpServer({
@@ -334,4 +334,115 @@ test('engine: scheduler-path check runs also persist monitor self-health (not ju
   assert.ok(Number.isFinite(h.value.uptimeSince));
   assert.equal(h.value.status, 'error'); // latest run (bad) is error
   assert.ok(h.value.lastCheckAt >= h.value.uptimeSince);
+});
+
+test('engine: deliverAlert recovered path records an info event and RECOVERED-detail notification', async () => {
+  const store = new Store(':memory:');
+  const notified = [];
+  const engine = new Engine({ store, config: {}, log: () => {} });
+  engine.notifyFn = async (r) => { notified.push(r); return [{ ok: true }]; };
+
+  const res = await engine.deliverAlert({ status: 'ok', kind: 'http', target: 'svc', detail: 'latency back in range' });
+  assert.deepEqual(res, [{ ok: true }]);
+  assert.equal(notified.length, 1);
+  assert.equal(notified[0].detail, 'RECOVERED: latency back in range');
+  assert.equal(notified[0].status, 'ok');
+  const events = store.recentEvents();
+  assert.equal(events[0].level, 'info');
+  assert.equal(events[0].source, 'http');
+  assert.equal(events[0].message, 'svc: recovered');
+  store.close();
+});
+
+test('engine: _defaultNotify dispatches every configured channel (desktop/webhook/email) and logs channel failures', async (t) => {
+  // real channels: notify-send spawn, a live local webhook listener, and an
+  // SMTP client aimed at a port that refuses connections (CAUGHT by the engine)
+  const hook = await startHttpServer({ '/hook': { status: 200, body: 'ok' } });
+  t.after(hook.close);
+  const refused = await freePort(); // nothing listens here -> ECONNREFUSED
+
+  const logLines = [];
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      notifications: {
+        desktop: true, // real notify-send spawn (exits 0 in CI sandbox)
+        webhook: { url: hook.url + '/hook' },
+        email: { host: '127.0.0.1', port: refused, from: 'a@b.c', to: 'd@e.f', subject: 'x', connectTimeoutMs: 2000 },
+      },
+    },
+    log: (m) => logLines.push(m),
+  });
+
+  const results = await engine._defaultNotify({ kind: 'tls', target: 'cert.example', status: 'error', detail: 'cert expired' });
+  // desktop result is collected into the results array (real notify-send spawn)
+  assert.ok(Array.isArray(results));
+  assert.equal(results.length, 1);
+  assert.equal(results[0].ok, true, 'notify-send exits 0 in the sandbox -> ok result entry');
+  // the refused SMTP connection surfaces as a caught + logged failure, never a throw
+  assert.ok(logLines.some((m) => m.includes('notify email failed')), `email failure logged: ${JSON.stringify(logLines)}`);
+  assert.ok(!logLines.some((m) => m.includes('notify webhook failed')), '200 webhook must not log a failure');
+  assert.ok(!logLines.some((m) => m.includes('notify desktop failed')), 'clean desktop spawn must not log a failure');
+  store.close();
+});
+
+test('engine: _defaultNotify skips unconfigured channels and logs a failing webhook response', async (t) => {
+  const hook = await startHttpServer({ '/hook': { status: 500, body: 'nope' } }); // non-2xx -> webhook { ok:false }
+  t.after(hook.close);
+  const logLines = [];
+  const store = new Store(':memory:');
+  const engine = new Engine({
+    store,
+    config: {
+      notifications: {
+        desktop: false,                       // skipped -> no desktop result entry
+        webhook: { url: hook.url + '/hook' }, // configured; /hook answers 500
+        email: {},                            // no host -> silently skipped
+      },
+    },
+    log: (m) => logLines.push(m),
+  });
+  const results = await engine._defaultNotify({ kind: 'http', target: 'api', status: 'warn', detail: 'slow p95' });
+  assert.deepEqual(results, [], 'no desktop channel -> empty results');
+  assert.ok(logLines.some((m) => m.includes('notify webhook failed')), `webhook 500 logged: ${JSON.stringify(logLines)}`);
+  assert.ok(!logLines.some((m) => m.includes('notify email failed')), 'unconfigured email stays silent');
+  store.close();
+});
+
+test('engine: store:prune task body deletes rows older than configured retention', async () => {
+  const store = new Store(':memory:');
+  // the prune cutoff is real Date.now()-based (engine.js run body), so seed
+  // rows relative to real wall-clock time
+  const now = Date.now();
+  const engine = new Engine({ store, config: { store: { retentionDays: 2 } }, log: () => {} });
+  // seed fresh + stale rows (the engine normally writes these via saveState/events/metrics)
+  for (const ts of [now - 3 * 86400e3, now - 86400e3]) {
+    store.db.prepare('INSERT INTO states (ts, target, kind, status) VALUES (?,?,?,?)').run(ts, 'svc', 'http', 'ok');
+    store.db.prepare('INSERT INTO metrics (ts, key, value) VALUES (?,?,?)').run(ts, 'http:svc/p50', 10);
+    store.db.prepare('INSERT INTO events (ts, level, source, message) VALUES (?,?,?,?)').run(ts, 'info', 'http', 'check ok');
+  }
+  const prune = engine.buildTasks().find((t) => t.id === 'store:prune');
+  assert.ok(prune, 'store:prune task present');
+  await prune.run();
+  const states = store.db.prepare('SELECT * FROM states').all();
+  const metrics = store.db.prepare('SELECT * FROM metrics').all();
+  const events = store.db.prepare('SELECT * FROM events').all();
+  assert.equal(states.length, 1, 'stale (3d old) state pruned against 2d retention');
+  assert.equal(states[0].ts, now - 86400e3, 'fresh state survives');
+  assert.equal(metrics.length, 1);
+  assert.equal(events.length, 1);
+  store.close();
+});
+
+test('engine: configSeconds and retentionDays/toDays poison inputs fall back to sane values', () => {
+  assert.equal(configSeconds(true), null);       // non-number/non-string -> null (line 346)
+  assert.equal(configSeconds('5x'), Number.NaN); // malformed unit string -> NaN
+  assert.equal(configSeconds('1.5h'), 5400);
+  assert.equal(configSeconds(90), 90);
+  assert.equal(retentionDays({ retentionDays: [] }), 7, 'non-numeric retention falls back to the 7d default'); // toDays NaN -> 7
+  assert.equal(retentionDays({ retentionDays: '48h' }), 2);
+  assert.equal(retentionDays({ retentionDays: '1w' }), 7);
+  assert.equal(retentionDays({}), 7);
+  assert.equal(toDays(-1), -1, 'raw toDays passes negatives through (caller guards)');
 });
