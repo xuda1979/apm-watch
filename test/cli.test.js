@@ -28,7 +28,7 @@ test('cli: worstStatus picks exit code across ok/warn/error', () => {
   assert.equal(worstStatus([warn, ok, err]), 2);
 });
 
-test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind', () => {
+test('cli: onceJsonRow pins the README once-report field contract and nulls fields off-kind', () => {
   // a stamped apm result (runApmCheck, inc 33) carries both judged thresholds
   const apm = onceJsonRow({
     target: 'pay', kind: 'apm', status: 'warn', ts: 123,
@@ -43,9 +43,18 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(apm.window_ms, 120_000, 'stamped collector window rides its own labelled row field');
   assert.equal(apm.max_samples, 25, 'stamped collector sample-cap rides its own labelled row field');
   assert.equal(apm.error_rate, 0.13);
+  assert.equal(apm.errors, 13, 'apm error count rides its own labelled row field');
+  assert.equal(apm.samples, 100, 'apm sample count rides its own labelled row field');
   assert.equal(apm.status_code, null, 'http-only field is null for apm');
+  assert.equal(apm.method, null, 'http-only http verb is null on apm rows');
   assert.equal(apm.uptime_pct, null, 'http-only availability pct is null on apm rows');
   assert.equal(apm.uptime_ms, null, 'http-only availability breakdown is null on apm rows');
+  assert.equal(apm.days_remaining, null, 'tls-only field is null on apm rows');
+  assert.equal(apm.warn_days_before, null, 'tls-only warn-days threshold is null on apm rows');
+  assert.equal(apm.port, null, 'tls-only probe port is null on apm rows');
+  assert.equal(apm.chain, null, 'tls-only cert chain is null on apm rows');
+  assert.equal(apm.valid_chain, null, 'tls-only chain validity is null on apm rows');
+  assert.equal(apm.leaf_subject, null, 'tls-only leaf subject is null on apm rows');
 
   // http rows stamp a per-target latency threshold but no error-rate threshold
   const http = onceJsonRow({
@@ -56,6 +65,8 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   });
   assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
   assert.equal(http.timeout_ms, 8000, 'configured abort timeout surfaces on http rows');
+  assert.equal(http.method, 'GET', 'the http verb rides its own labelled row field');
+  assert.equal(http.status_code, 200, 'the reported http status rides its own labelled row field');
   assert.equal(http.expected_status_code, null, 'unconfigured expected status stays null on http rows');
   assert.equal(http.body_includes, null, 'unconfigured body marker stays null on http rows');
   assert.equal(http.error_rate_threshold, null, 'apm-only field is null for http');
@@ -63,6 +74,15 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(http.max_samples, null, 'apm-only collector sample-cap is null on http rows');
   assert.equal(http.p50_ms, null);
   assert.equal(http.p95_ms, null, 'apm-only p95 slot stays null on http rows');
+  assert.equal(http.days_remaining, null, 'tls-only field is null on http rows');
+  assert.equal(http.warn_days_before, null, 'tls-only warn-days threshold is null on http rows');
+  assert.equal(http.port, null, 'tls-only probe port is null on http rows');
+  assert.equal(http.chain, null, 'tls-only cert chain is null on http rows');
+  assert.equal(http.valid_chain, null, 'tls-only chain validity is null on http rows');
+  assert.equal(http.leaf_subject, null, 'tls-only leaf subject is null on http rows');
+  assert.equal(http.error_rate, null, 'apm-only error rate stays null on http rows');
+  assert.equal(http.errors, null, 'apm-only error count stays null on http rows');
+  assert.equal(http.samples, null, 'apm-only sample count stays null on http rows');
   assert.equal(http.uptime_pct, 99.97, 'http availability percentage maps to its row field');
   assert.deepEqual(http.uptime_ms, { up_ms: 9997, down_ms: 3, total_ms: 10000, samples: 3 }, 'http availability breakdown maps up_ms/down_ms/total_ms/samples');
 
@@ -78,10 +98,18 @@ test('cli: onceJsonRow surfaces the apm warn thresholds and nulls them off-kind'
   assert.equal(tls.window_ms, null, 'apm-only collector window is null on tls rows');
   assert.equal(tls.max_samples, null, 'apm-only collector sample-cap is null on tls rows');
   assert.equal(tls.timeout_ms, 4000, 'cert-fetch socket timeout surfaces on tls rows');
+  assert.equal(tls.days_remaining, 200, 'tls days-remaining rides its own labelled row field');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
   assert.equal(tls.port, null, 'tls row without a probed port keeps the field null, not dropped');
   assert.equal(tls.uptime_pct, null, 'http-only availability pct is null on tls rows');
   assert.equal(tls.uptime_ms, null, 'http-only availability breakdown is null on tls rows');
+  assert.equal(tls.method, null, 'http-only http verb is null on tls rows');
+  assert.equal(tls.status_code, null, 'http-only status code is null on tls rows');
+  assert.equal(tls.error_rate, null, 'apm-only error rate stays null on tls rows');
+  assert.equal(tls.errors, null, 'apm-only error count stays null on tls rows');
+  assert.equal(tls.samples, null, 'apm-only sample count stays null on tls rows');
+  assert.equal(tls.p50_ms, null, 'apm-only p50 slot stays null on tls rows');
+  assert.equal(tls.p95_ms, null, 'apm-only p95 slot stays null on tls rows');
 });
 
 // Run `node bin/apm-watch.js once --config <file>` and resolve {code, stdout}.
