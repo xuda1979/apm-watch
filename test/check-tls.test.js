@@ -133,3 +133,16 @@ test('tls: malformed PEM block degrades to "no certificates found"', () => {
   const bad = '-----BEGIN CERTIFICATE-----\nbm90IGEgY2VydA==\n-----END CERTIFICATE-----\n';
   assert.throws(() => inspectPemChain(bad), /no certificates found in PEM content/);
 });
+
+test('tls: netChainToReport null-guards when the chain comes back empty', () => {
+  // netChainToReport (check-tls.js) must degrade gracefully when a fetch
+  // returns no certs at all: `leaf ? ... : null` (daysRemaining, line 172)
+  // and `chain[0]?.subject ?? null` (leafSubject, line 179) are the product
+  // fences for that path — an empty list reports nulls instead of throwing.
+  const r = netChainToReport({ host: 'ghost.example', port: 443, certs: [] });
+  assert.equal(r.host, 'ghost.example');
+  assert.equal(r.daysRemaining, null, 'no leaf cert -> null days remaining');
+  assert.equal(r.leafSubject, null, 'no leaf cert -> null leaf subject');
+  assert.deepEqual(r.chain, []);
+  assert.equal(r.validChain, true, 'empty list satisfies the every() linkage gate');
+});
