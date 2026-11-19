@@ -375,3 +375,89 @@ test('export: a corrupted chain_json store row degrades to a null chain instead 
   assert.match(html, /expires in 12d/, 'the status page still renders the degraded target row');
   setTimeout(store.close, 0);
 });
+
+test('export: a tls-only target keeps a null http block and no availability entry', () => {
+  const store = new Store(':memory:');
+  const past = Date.now() - 60000;
+  store.setClock(() => past);
+  store.saveState({ target: 'certbox', kind: 'tls', status: 'ok', daysRemaining: 30, validChain: true, leafSubject: '/CN=box.test', detail: 'ok' });
+  const out = exportStatus(store, {});
+  const box = out.targets.find((t) => t.target === 'certbox');
+  assert.equal(box.http, null, 'a target with no http state keeps a null http block');
+  assert.equal(box.tls.days_remaining, 30, 'the tls state still surfaces on the same target row');
+  assert.ok(out.availability, 'the availability map still surface');
+  assert.ok(!('certbox' in out.availability), 'no availability entry without http history');
+  setTimeout(store.close, 0);
+});
+
+test('export: health block falls back to unknown/null when monitor meta lacks status/uptimeSince', () => {
+  const store = new Store(':memory:');
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  // a partial monitor meta (lastCheckAt alone) resolves its missing fields to
+  // the documented defaults instead of dropping the block (web /api/states
+  // parity): status || 'unknown', uptimeSince ?? null
+  store.setMeta('health', { lastCheckAt: Date.now() });
+  const out = exportStatus(store, {});
+  assert.deepEqual(out.health, { status: 'unknown', uptimeSince: null, lastCheckAt: out.health.lastCheckAt }, 'missing status/uptimeSince resolve to unknown/null rather than dropping the block');
+  assert.equal(typeof out.health.lastCheckAt, 'number', 'the persisted lastCheckAt still rides the block');
+  setTimeout(store.close, 0);
+});
+
+test('export: renderStatusPage null-guards a hand-built minimal status snapshot', () => {
+  // the page renderer is a public face: a hand-built status object (no summary
+  // counts, no version, no targets, no events, no notification state) must still
+  // render instead of throwing on the guards (web round-trip parity — the export
+  // JSON always carries these keys, but hand-rolled snapshots may not)
+  const html = renderStatusPage({
+    generated_at: '2026-01-01T00:00:00.000Z',
+    // empty target list -> the empty-table fallback row (the export JSON always
+    // carries an array; the renderer guards the joining, not a missing key)
+    targets: [],
+    // no apm_watch_version -> footer falls back to v0.0.0
+    // no summary -> counts default to {} and every pill reads 0
+    // no events -> no recent-events section
+    // no notifications -> no notif meta
+  });
+  assert.match(html, /ok <b>0<\/b>/);
+  assert.match(html, /warn <b>0<\/b>/);
+  assert.match(html, /error <b>0<\/b>/);
+  assert.match(html, /overall /, 'missing summary.overall degrades to an empty label, not a crash');
+  assert.match(html, /no targets configured yet/, 'empty target list renders the fallback row');
+  assert.doesNotMatch(html, /recent events/, 'missing events list renders no events section');
+  assert.doesNotMatch(html, /notif /, 'missing notifications state renders no notif meta');
+  assert.match(html, /v0\.0\.0/, 'missing version falls back to the 0.0.0 default');
+});
+
+test('export: renderStatusPage falls back on hand-built rows without availability/chain/detail objects', () => {
+  const now = Date.now();
+  const base = {
+    // generated_at deliberately omitted -> esc() degrades to an empty string
+    summary: { overall: 'ok', counts: { ok: 1 } },
+    health: { status: 'ok', lastCheckAt: now }, // no uptimeSince -> up since lastCheck
+    notifications: { desktop: false, webhook: true, email: true }, // no repeatIntervalSeconds
+    targets: [{
+      target: 'bare',
+      http: { status: 'ok', uptime_pct: 99.5 }, // no uptime_ms breakdown, no detail
+      tls: {
+        status: 'ok',
+        chain: [{
+          subject: '/CN=box.test', issuer: '/CN=ca.test', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 30, selfSigned: false,
+          // no validFrom -> the tooltip falls back to an em dash (chain-web
+          // parity; the report's inspectPemChain always stamps validFrom)
+        }],
+      }, // chain without a validFrom date -> tooltip em-dash fallback
+      apm: null,
+    }],
+  };
+  const html = renderStatusPage(base);
+  assert.match(html, />bare<\/td>/, 'the hand-built row still renders');
+  assert.match(html, /99\.5% uptime/, 'uptime pct renders without the uptime_ms breakdown');
+  assert.match(html, /up 0s/, 'missing uptimeSince degrades to up-since-lastCheck');
+  assert.match(html, /notif webhook email/, 'off and on notification halves both render');
+  assert.match(html, /repeat 1h 0m/, 'missing repeat interval resolves to the 3600s default');
+  assert.doesNotMatch(html, /keep \d+d/, 'no store block -> no retention meta');
+  assert.doesNotMatch(html, /history /, 'no ui block -> no history meta');
+  assert.doesNotMatch(html, /title=/, 'empty chain -> no tooltip attribute');
+  const html2 = renderStatusPage({ ...base, notifications: {} });
+  assert.match(html2, /notif none/, 'all-off channels render as none');
+});
