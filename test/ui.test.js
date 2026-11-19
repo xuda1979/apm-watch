@@ -1043,3 +1043,65 @@ test('ui: tui apm history renders em-dash fallbacks when no series were recorded
   assert.doesNotMatch(out, /\n    err /, 'no error-rate series, so the err sub-line is omitted');
 });
 
+test('ui: tui header uses the version divider without health meta and folds kind-less rows to a bare worst marker', async (t) => {
+  const store = new Store(':memory:');
+  // a configured version + absent health meta: the no-health header line gains
+  // the version but skips uptime/counts entirely; a state whose kind is outside
+  // http/tls/apm (e.g. a parked engine heartbeat) has no known kind row, so its
+  // worst status falls back to `unknown` -> the bare `?` marker. A null
+  // latency_ms folds to the `—` cell like the network-error path.
+  store.saveState({ target: 'engine', kind: 'engine', status: 'ok', detail: 'heartbeat' });
+  store.saveState({ target: 'net', kind: 'http', status: 'ok', latencyMs: null, detail: null });
+  t.after(() => store.close());
+
+  const tui = new Tui({ store, intervalMs: 1000, version: '9.9.9' });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  assert.match(out, /apm-watch v9\.9\.9─{44}/, 'no health meta: the version divider line, without uptime/counts');
+  assert.match(out, /  \? engine  /, 'a kind-less row carries the bare ? worst marker, not a known status color');
+  assert.match(out, /http:ok:—/, 'a null latency_ms folds to the em-dash cell');
+});
+
+test('ui: tui row edges — single-sample availability, malformed chain_json, apm cadence, mixed-status worst weight', async (t) => {
+  const store = new Store(':memory:');
+  // backdate one http snapshot so the time-weighted availability over [ts, now]
+  // is a real interval: 1 sample -> the `(over 1 sample)` annotation
+  store.setClock(() => Date.now() - 60_000);
+  store.saveState({ target: 'up', kind: 'http', status: 'ok', latencyMs: 5, detail: 'HTTP 200' });
+  // a two-cert chain, then the stored chain_json is corrupted at the SQL row so
+  // JSON.parse throws and the row falls back to the leaf-only shape
+  store.saveState({ target: 'tls', kind: 'tls', status: 'ok', detail: 'cert holds', validChain: true, chain: [
+    { subject: '/CN=a.test', validFrom: '2025-01-01T00:00:00.000Z', notAfter: '2030-01-01T00:00:00.000Z', daysRemaining: 100, selfSigned: false },
+    { subject: '/CN=b.test', validFrom: '2024-01-01T00:00:00.000Z', notAfter: '2029-01-01T00:00:00.000Z', daysRemaining: 200, selfSigned: false },
+  ] });
+  store.db.prepare("UPDATE states SET chain_json = ? WHERE target = 'tls' AND kind = 'tls'").run('{broken');
+  // one target carrying error + warn + foreign statuses exercises the weight
+  // ordering in both the row worst and the snapshot overall
+  store.saveState({ target: 'mix', kind: 'http', status: 'error', latencyMs: 9, detail: 'HTTP 500' });
+  store.saveState({ target: 'mix', kind: 'apm', status: 'warn', latencyMs: 270, detail: 'slow p95' });
+  store.saveState({ target: 'mix', kind: 'engine', status: 'pending', detail: 'starting' });
+  store.setClock(() => Date.now());
+  t.after(() => store.close());
+  // health meta drives the header count line, where the overall worst-status
+  // word rides (inc 96 parity): all three rows fold to the same `error` worst
+  store.setMeta('health', { status: 'ok', uptimeSince: Date.now() - 60e3, lastCheckAt: Date.now() });
+
+  const tui = new Tui({ store, intervalMs: 1000, apmIntervalSeconds: 120 });
+  let out = '';
+  const orig = process.stdout.write;
+  process.stdout.write = (s) => { out += s; return true; };
+  try { tui.render(); } finally { process.stdout.write = orig; }
+  // drop ANSI color codes once so row-marker wording can be asserted plainly
+  const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
+  // single http snapshot: availability pct present + exactly 1 sample
+  assert.match(out, /100% \(down 0s\) \(over 1 sample\)/, 'single-row availability annotates `(down 0s) (over 1 sample)`');
+  // malformed chain_json must not escape the frame nor render a chain path
+  assert.doesNotMatch(out, /chain:/, 'a malformed chain_json falls back to the leaf-only row');
+  // the configured apm cadence rides the live row (inc 76 parity)
+  assert.match(out, /every 2m/, 'apm collection cadence annotates the live row when configured');
+  // error > warn > (anything else 0): the snapshot overall + row worst surface `error`
+  assert.match(out, /overall error/, 'the worst status word across a mixed snapshot is error');
+  assert.match(plain, /  err\s+mix  http:error:9ms/, 'the mixed row wears the err marker and its segments');
+});
