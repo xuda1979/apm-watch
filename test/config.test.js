@@ -9,7 +9,9 @@
 // Covers previously-uncovered lib/config.js lines in the full-suite coverage
 // report: 233-234 (readFileSync failure), 239-240 (JSON.parse failure),
 // 243-246 (webhook env override), 250-252 (SMTP env override), 269-270
-// (default SMTP port deleted when SMTP_PORT is absent).
+// (default SMTP port deleted when SMTP_PORT is absent). The resolver tests
+// below also drive the checkIntervalMap key-halfs (unnamed http url / tls
+// host:port keys) and the config?. optional-chain guards on absent sections.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
