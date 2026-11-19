@@ -1271,6 +1271,13 @@ test('cli: invalid config fails fast at boot with a one-line fatal', async (t) =
   const badJson = await runOnceJson(cfg);
   assert.equal(badJson.code, 1, `json variant expects exit 1\nstderr:\n${badJson.stderr}`);
   assert.match(badJson.stderr, /\[apm-watch\] fatal: invalid config:/);
+  // the fail-fast claim covers the long-lived run monitor too (cmdRun runs the
+  // same assertValidConfig at bin/apm-watch.js:172 before any server or engine
+  // starts), so a typo'd interval must abort run at boot, not quietly scan
+  const badRun = await runCli('run', '--config', cfg);
+  assert.equal(badRun.code, 1, `run variant expects exit 1\nstderr:\n${badRun.stderr}`);
+  assert.match(badRun.stderr, /\[apm-watch\] fatal: invalid config:/, 'run variant flags the boot failure');
+  assert.doesNotMatch(badRun.stderr, /at (cmdRun|main)/, 'run variant dumps no raw stack trace');
 });
 
 test('cli: serve honors the configured ui.port when --port is absent', async (t) => {
