@@ -202,6 +202,32 @@ test('export: aggregates latest status across http/tls/apm target into JSON', ()
   setTimeout(store.close, 0);
 });
 
+test('export: configured ui.historySeconds gates the availability aggregation window', () => {
+  // ui.historySeconds (config.js:171-178) selects the history span availability
+  // aggregates over: a snapshot inside the 24h default window but outside a 1h
+  // window counts under the default and is excluded once the operator narrows
+  // the window to 3600s (web /api/states parity, validate.js:133-139 gates it).
+  const store = new Store(':memory:');
+  const clockBase = Date.now();
+  let wall = clockBase - 7200_000; // 2h backdated: inside 24h, outside 1h
+  store.setClock(() => wall);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, method: 'GET', statusCode: 200, detail: 'HTTP 200' });
+  wall += 6600_000; // 10min backdated: inside the 1h window
+  store.saveState({ target: 'api', kind: 'http', status: 'error', latencyMs: null, detail: 'down' });
+  const out = exportStatus(store, { ui: { historySeconds: 3600 } });
+  assert.equal(out.ui.historySeconds, 3600, 'configured ui history window surfaces on the export snapshot');
+  assert.equal(out.availability['api'].samples, 1, 'a narrowed ui window keeps only the in-window snapshot');
+  assert.equal(out.availability['api'].upMs, 0, 'the 2h-old ok snapshot is excluded once the window narrows to 1h');
+  assert.ok(out.availability['api'].downMs > 0, 'the in-window error snapshot still contributes downtime');
+  const api = out.targets.find((t) => t.target === 'api');
+  assert.equal(api.http.uptime_pct, 0, 'uptime pct reflects only the in-window snapshots');
+  // the same data under the 24h default window keeps the older snapshot again
+  const outDefault = exportStatus(store, {});
+  assert.equal(outDefault.availability['api'].samples, 2, 'the 24h default window keeps the older snapshot');
+  assert.ok(outDefault.availability['api'].upMs > 0, 'the 24h default window counts the older ok snapshot as up time');
+  setTimeout(store.close, 0);
+});
+
 test('export: renderStatusPage builds a self-contained html snapshot', () => {
   const store = new Store(':memory:');
   // backdate states so availability sees a nonzero window (same-ms saves -> 0ms).

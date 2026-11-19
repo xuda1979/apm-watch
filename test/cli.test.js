@@ -872,6 +872,36 @@ test('cli: export --out file.html writes a self-contained status page', async (t
   assert.match(html, /apm-watch v1\.0\.0/);
 });
 
+test('cli: export --out file.htm writes the same self-contained page (format selection covers .htm)', async (t) => {
+  // The export format selection at bin/apm-watch.js:722 treats `.htm` exactly
+  // like `.html` (`endsWith('.html') || endsWith('.htm')`): a user pointing at
+  // file.htm gets the HTML page, not JSON. Pins that second half of the format
+  // choice so the documented "自包含 HTML 状态页" claim holds for both common
+  // html extension spellings.
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'exp.json');
+  const outFile = path.join(dir, 'status.htm');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'exp.db') },
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+  const { code, stdout } = await runCli('export', '--config', cfg, '--out', outFile);
+  assert.equal(code, 0);
+  assert.match(stdout, /wrote .*status\.htm \(html\)/, 'the .htm write is reported as html format');
+  const { readFileSync } = await import('node:fs');
+  const html = readFileSync(outFile, 'utf8');
+  assert.match(html, /^<!doctype html>/, 'a page, not JSON, is written for .htm');
+  assert.doesNotMatch(html, /^\{/, 'no raw JSON object for .htm');
+  assert.match(html, />ok-svc<\/td>/);
+  assert.match(html, /overall ok/);
+});
+
 test('cli: top-level fatal prints a one-line message, no raw stack dump', async () => {
   // `export --out /nonexistent-dir/x.json` and other boot-time failures must
   // surface a readable one-line error (cron/CI clean stderr), not a full
