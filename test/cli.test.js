@@ -37,6 +37,7 @@ test('cli: onceJsonRow pins the README once-report field contract and nulls fiel
     detail: 'p50=700ms p95=900ms errors=13/100 (slow p95)',
   });
   assert.equal(apm.kind, 'apm');
+  assert.equal(apm.ts, 123, 'stamped apm result timestamp rides the ts slot');
   assert.equal(apm.p95_ms, 900, 'p95 ms rides its own labelled row field');
   assert.equal(apm.error_rate_threshold, 0.12, 'configured apm error-rate threshold surfaces');
   assert.equal(apm.latency_threshold_ms, 800, 'apm latency threshold rides the shared http/apm field');
@@ -64,6 +65,7 @@ test('cli: onceJsonRow pins the README once-report field contract and nulls fiel
     detail: 'HTTP 200 in 4ms',
   });
   assert.equal(http.latency_threshold_ms, 250, 'per-http threshold keeps its slot');
+  assert.equal(http.ts, 1, 'stamped http result timestamp rides the ts slot');
   assert.equal(http.timeout_ms, 8000, 'configured abort timeout surfaces on http rows');
   assert.equal(http.method, 'GET', 'the http verb rides its own labelled row field');
   assert.equal(http.status_code, 200, 'the reported http status rides its own labelled row field');
@@ -97,6 +99,7 @@ test('cli: onceJsonRow pins the README once-report field contract and nulls fiel
   assert.equal(tls.error_rate_threshold, null, 'apm-only field is null for tls');
   assert.equal(tls.window_ms, null, 'apm-only collector window is null on tls rows');
   assert.equal(tls.max_samples, null, 'apm-only collector sample-cap is null on tls rows');
+  assert.equal(tls.ts, 2, 'stamped tls result timestamp rides the ts slot');
   assert.equal(tls.timeout_ms, 4000, 'cert-fetch socket timeout surfaces on tls rows');
   assert.equal(tls.days_remaining, 200, 'tls days-remaining rides its own labelled row field');
   assert.equal(tls.warn_days_before, 30, 'tls threshold untouched by the apm field');
@@ -110,6 +113,11 @@ test('cli: onceJsonRow pins the README once-report field contract and nulls fiel
   assert.equal(tls.samples, null, 'apm-only sample count stays null on tls rows');
   assert.equal(tls.p50_ms, null, 'apm-only p50 slot stays null on tls rows');
   assert.equal(tls.p95_ms, null, 'apm-only p95 slot stays null on tls rows');
+
+  // a ts-less row (no producer ever omits ts, but a CI consumer mapping a bare
+  // object into the contract still needs ts:null, never undefined)
+  const bare = onceJsonRow({ target: 'raw', kind: 'http', status: 'ok', detail: 'x' });
+  assert.equal(bare.ts, null, 'missing ts normalizes to null, keeping the row shape stable');
 });
 
 // Run `node bin/apm-watch.js once --config <file>` and resolve {code, stdout}.
