@@ -199,3 +199,87 @@ test('smtp: STARTTLS upgrade path works (banner after handshake is not misparsed
   assert.ok(mock.transcript.includes('MAIL FROM:<a@example.com>'));
   assert.match(mock.data(), /hello over tls/);
 });
+
+test('smtp: implicit TLS (secure: true) connects directly over TLS', async (t) => {
+  const tls = await import('node:tls');
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'apmw-smtps-'));
+  const keyFile = path.join(dir, 'k.pem');
+  const certFile = path.join(dir, 'c.pem');
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=fixture.test', '-keyout', keyFile, '-out', certFile], { stdio: 'ignore' });
+  const serverOpts = { key: readFileSync(keyFile), cert: readFileSync(certFile) };
+
+  const transcript = [];
+  let dataBuf = '';
+  let dataMode = false;
+  // TLS from the first byte: unlike STARTTLS, the plaintext phase never happens.
+  const server = tls.createServer(serverOpts, (sock) => {
+    const send = (line) => sock.write(line + '\r\n');
+    send('220 tls mock ready');
+    let buf = '';
+    sock.on('data', (d) => {
+      buf += d.toString('utf8');
+      let n;
+      while ((n = buf.indexOf('\n')) >= 0) {
+        const bare = buf.slice(0, n).replace(/\r$/, '').trimStart();
+        buf = buf.slice(n + 1);
+        if (dataMode) {
+          dataBuf += bare + '\n';
+          if (bare === '.') { dataMode = false; send('250 message accepted'); }
+          continue;
+        }
+        transcript.push(bare);
+        if (bare.startsWith('EHLO')) send('250-mock\r\n250 AUTH PLAIN');
+        else if (bare.startsWith('AUTH')) send('235 authentication ok');
+        else if (bare.startsWith('MAIL')) send('250 ok');
+        else if (bare.startsWith('RCPT')) send('250 ok');
+        else if (bare === 'DATA') { dataMode = true; send('354 end with .'); }
+        else if (bare === 'QUIT') { send('221 bye'); sock.end(); }
+        else send('250 ok');
+      }
+    });
+  });
+
+  const mock = await new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve({
+      port: server.address().port,
+      transcript,
+      data: () => dataBuf,
+      close: async () => {
+        await new Promise((r) => server.close(r));
+        rmSync(dir, { recursive: true, force: true });
+      },
+    }));
+  });
+  t.after(mock.close);
+
+  const res = await sendMail({
+    host: '127.0.0.1', port: mock.port, secure: true, tlsReject: false,
+    from: 'a@example.com', to: 'b@example.com',
+    subject: 'implicit tls test', text: 'hello over implicit tls',
+  });
+  assert.equal(res.ok, true);
+  assert.ok(mock.transcript.some((l) => l.startsWith('EHLO apm-watch')), `got ${JSON.stringify(mock.transcript)}`);
+  assert.ok(mock.transcript.includes('MAIL FROM:<a@example.com>'));
+  assert.ok(mock.transcript.includes('QUIT'));
+  assert.match(mock.data(), /hello over implicit tls/);
+});
+
+test('smtp: unsolicited server line rejects as unexpected', async (t) => {
+  // The mock writes a second line back-to-back with the banner, so by the time
+  // the client parses it the pending-command queue is already empty.
+  const mock = await startMockSmtp({ banner: '220 mock ready\r\n250 surprise' });
+  t.after(mock.close);
+  await assert.rejects(
+    sendMail({
+      host: '127.0.0.1', port: mock.port, connectTimeoutMs: 500,
+      from: 'a@example.com', to: 'b@example.com', subject: 'x', text: 'y',
+    }),
+    /smtp: unexpected 250 surprise/,
+    'protocol violation is surfaced, not silently consumed',
+  );
+});
