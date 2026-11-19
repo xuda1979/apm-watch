@@ -1272,6 +1272,36 @@ test('cli: malformed numeric flags fail fast with a readable message', async (t)
   assert.ok(port > 0, `port 0 keeps working, got ${port}`);
 });
 
+test('cli: bare demo resolves the documented default endpoint and interval, stops cleanly', async (t) => {
+  // README:50 runs bare `node bin/apm-watch.js demo` and README:58 brackets
+  // both options as optional, so the fallback resolution at bin/apm-watch.js:299-300
+  // (http://127.0.0.1:8787/apm/agent/trace, 700ms interval) is documented CLI
+  // behavior. Every other demo test passes --collect-addr/--interval explicitly,
+  // so a regression in the fallback (or a default silently read from the process
+  // env) would go green uncaught.
+  const child = spawn(process.execPath, [BIN, 'demo'], { cwd: path.dirname(BIN) });
+  t.after(() => child.kill('SIGTERM'));
+  let stdout = '';
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const banner = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`demo did not print the banner; stdout:\n${stdout}`)), 8000);
+    child.stdout.on('data', (d) => {
+      stdout += d;
+      if (/reporting to http:\/\/127\.0\.0\.1:8787\/apm\/agent\/trace every 700ms/.test(stdout)) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+  await banner;
+  // graceful teardown mirrors cmdRun: SIGTERM routes demo through agent.stop()
+  // and exits 0, never a default-signal death
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, `bare demo exits 0 after SIGTERM, not signal death\nstderr:\n${stderr}`);
+});
+
 test('cli: occupied port exits 1 with a one-line fatal, no raw stack dump', async (t) => {
   // server.listen() bind errors fire on the server 'error' event (not as a
   // rejection), so an occupied port used to dump a raw "Unhandled 'error'
