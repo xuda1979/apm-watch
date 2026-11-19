@@ -345,6 +345,76 @@ test('cli: TUI collector falls back to the documented --apm-port 8789 default', 
   assert.equal(code, 0, 'TUI with the default collector port still stops cleanly');
 });
 
+test('cli: web mode ignores --apm-port (the collector rides the web UI server)', async (t) => {
+  // README:57 lists `--apm-port PORT` on the top-level run usage line, but
+  // cmdRun consumes the flag only in the TUI branch (bin/apm-watch.js:195
+  // `args.apmPort || config.apm?.port || 8789`); the web branch (bin:182-188)
+  // attaches the collector to the web UI server itself and never reads
+  // args.apmPort. Pin that web mode opens no intake port at the given
+  // --apm-port value: the collector must answer on the web port instead, and a
+  // span POST to the apm-port value must hit a closed port.
+  const freePort = async () => {
+    const srv = createNetServer();
+    const p = await new Promise((resolve, reject) => {
+      srv.on('error', reject);
+      srv.listen(0, '127.0.0.1', () => resolve(srv.address().port));
+    });
+    await new Promise((resolve) => srv.close(resolve));
+    return p;
+  };
+  const webPort = await freePort();
+  const apmPort = await freePort();
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-web-apmport-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'web-apmport.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true, errorRateThreshold: 0.05 },
+    store: { path: path.join(dir, 'web-apmport.db') },
+    notifications: { desktop: false },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg, '--ui', 'web', '--ui-port', String(webPort), '--apm-port', String(apmPort)], { cwd: path.dirname(BIN) });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`run did not report a port; stderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', (d) => {
+      out += d;
+      if (out.includes(`web UI on http://127.0.0.1:${webPort}/`)) { clearTimeout(timer); resolve(); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // the collector rides the web UI server: a span POST to the web port is 204
+  const traceOnWeb = await fetch(`http://127.0.0.1:${webPort}/apm/agent/trace`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'web-check', latency_ms: 12, error: false }),
+  });
+  assert.equal(traceOnWeb.status, 204, `collector answers on the web UI port\nstderr:\n${stderr}`);
+
+  // the --apm-port value heard nothing: web mode opens no separate intake port,
+  // so a span POST there must reject (connection refused), not resolve
+  await assert.rejects(
+    fetch(`http://127.0.0.1:${apmPort}/apm/agent/trace`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'web-check', latency_ms: 12, error: false }),
+    }),
+    `--apm-port is inert in web mode: nothing listens at ${apmPort}`,
+  );
+
+  // and the web UI itself serves state on its own port regardless of the flag
+  const states = await (await fetch(`http://127.0.0.1:${webPort}/api/states`)).json();
+  assert.ok(Array.isArray(states.states), 'web /api/states serves alongside the silent --apm-port');
+
+  child.kill('SIGTERM');
+  const code = await new Promise((resolve) => child.on('close', resolve));
+  assert.equal(code, 0, 'web run with an inert --apm-port still stops cleanly');
+});
+
 test('cli: once surfaces a pre-existing monitor up-span in hours (fmtDuration hour branch)', async (t) => {
   // fmtDuration's hour branch (bin/apm-watch.js) renders `2h 0m`-style up-spans.
   // A zero-check `once` (http: []) never calls engine.persistHealth(), so the
