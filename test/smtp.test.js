@@ -29,7 +29,7 @@ function startMockSmtp(opts = {}) {
         transcript.push(bare);
         if (bare.startsWith('EHLO')) send('250-mock\r\n250 AUTH PLAIN');
         else if (bare.startsWith('AUTH')) send(opts.authRelay ?? '235 authentication ok');
-        else if (bare.startsWith('MAIL')) send('250 ok');
+        else if (bare.startsWith('MAIL')) send(opts.rejectMail ?? '250 ok');
         else if (bare.startsWith('RCPT')) send('250 ok');
         else if (bare === 'DATA') { dataMode = true; send('354 end with .'); }
         else if (bare === 'QUIT') { send('221 bye'); sock.end(); }
@@ -86,6 +86,16 @@ test('smtp: rejected banner surfaces as an error', async (t) => {
   await assert.rejects(
     sendMail({ host: '127.0.0.1', port: mock.port, from: 'a', to: 'b', subject: '', text: '' }),
     /smtp/i,
+  );
+});
+
+test('smtp: unexpected command reply rejects send with expected/code detail', async (t) => {
+  const mock = await startMockSmtp({ rejectMail: '550 relay denied' });
+  t.after(mock.close);
+  await assert.rejects(
+    sendMail({ host: '127.0.0.1', port: mock.port, from: 'a@example.com', to: 'b@example.com', subject: 'x', text: 'y' }),
+    (e) => /expected 250 for mail from/.test(e.message) && /got 550: 550 relay denied/.test(e.message),
+    'curated expected/got error from send()',
   );
 });
 
