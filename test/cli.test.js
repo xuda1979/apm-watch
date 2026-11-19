@@ -1340,6 +1340,13 @@ test('cli: malformed numeric flags fail fast with a readable message', async (t)
     ['serve', '--port', '-5'],
     ['serve', '--port', '99999'],
     ['run', '--ui-port', 'abc'],
+    // --apm-port is validated by the same tuple as --port/--ui-port at
+    // bin/apm-watch.js:84 (integer in [0, 65535]); the trailing variant would
+    // otherwise silently fall back to the documented default 8789
+    ['run', '--apm-port', 'abc'],
+    ['run', '--apm-port', '-5'],
+    ['run', '--apm-port', '99999'],
+    ['run', '--apm-port'],
     ['run', '--ui', 'bogus'],
     ['demo', '--interval', '200ms'],
     // a value above the timers max (2^31-1 ms) would clamp to 1 ms in Node's
