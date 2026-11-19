@@ -279,6 +279,40 @@ test('engine: per-check intervalSeconds overrides the scheduler-wide default', (
   assert.equal(find('tls:cert'), 120_000); // unit string "2m"
 });
 
+test('engine: buildTasks registers the apm:summary task only when apm.collect is enabled', () => {
+  const store = new Store(':memory:');
+  const on = new Engine({
+    store,
+    config: { apm: { collect: true, windowMs: 60_000 }, scheduler: { apmIntervalSeconds: 42 } },
+    log: () => {},
+  });
+  const apmTask = on.buildTasks().find((t) => t.id === 'apm:summary');
+  assert.ok(apmTask, 'apm:summary task registered when apm.collect is true');
+  assert.equal(apmTask.intervalMs, 42_000, 'scheduler-wide apmIntervalSeconds resolves the apm summary interval');
+  assert.equal(apmTask.initialDelayMs, 1500);
+  assert.equal(typeof apmTask.run, 'function');
+
+  // unit-string apm interval + no scheduler-wide default -> hard fallback 60s
+  const unitTask = new Engine({
+    store,
+    config: { apm: { collect: true }, scheduler: { apmIntervalSeconds: '2m' } },
+    log: () => {},
+  }).buildTasks().find((t) => t.id === 'apm:summary');
+  assert.equal(unitTask.intervalMs, 120_000, 'unit-string apm intervalSeconds resolves like http/tls tasks');
+  const fallback = new Engine({
+    store,
+    config: { apm: { collect: true } },
+    log: () => {},
+  }).buildTasks().find((t) => t.id === 'apm:summary');
+  assert.equal(fallback.intervalMs, 60_000, 'defaults to 60s when apmIntervalSeconds is unset');
+
+  // collect off/absent -> no apm:summary task at all
+  const off = new Engine({ store, config: { apm: { collect: false } }, log: () => {} });
+  assert.ok(!off.buildTasks().find((t) => t.id === 'apm:summary'), 'no apm:summary task when apm.collect is false');
+  const absent = new Engine({ store, config: {}, log: () => {} });
+  assert.ok(!absent.buildTasks().find((t) => t.id === 'apm:summary'), 'no apm:summary task when apm is absent');
+});
+
 test('engine: tick persists monitor self-health (uptime/lastCheck/status)', async (t) => {
   const httpSrv = await startHttpServer({
     '/ok': { status: 200, body: 'all good' },
