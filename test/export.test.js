@@ -337,6 +337,19 @@ test('export: health block surfaces monitor uptime/lastCheck in json + html', ()
   setTimeout(store.close, 0);
 });
 
+test('export: health uptime renders hour+minute span (fmtDuration hour branch)', () => {
+  const store = new Store(':memory:');
+  const past = Date.now() - 300000;
+  store.setClock(() => past);
+  store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
+  // a ≥1h up-span drives fmtDuration past the minute branch: 2h 5m
+  store.setMeta('health', { status: 'ok', uptimeSince: past - 7530000, lastCheckAt: past });
+  const html = renderStatusPage(exportStatus(store, {}, '1.2.3'));
+  assert.match(html, /up 2h 5m/, '>=1h uptime renders as hours + minutes');
+  assert.match(html, /last check /);
+  setTimeout(store.close, 0);
+});
+
 test('export: health is null when no monitor meta was persisted', () => {
   const store = new Store(':memory:');
   store.saveState({ target: 'api', kind: 'http', status: 'ok', latencyMs: 12, detail: 'HTTP 200' });
