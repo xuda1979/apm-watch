@@ -1178,3 +1178,29 @@ test('cli: occupied port exits 1 with a one-line fatal, no raw stack dump', asyn
   assert.match(se, /\[apm-watch\] fatal: .*EADDRINUSE/, 'one-line fatal names the bind failure');
   assert.doesNotMatch(se, /Unhandled 'error' event|at Server\./ , 'no raw bind error stack dumped');
 });
+
+test('cli: invalid config fails fast at boot with a one-line fatal', async (t) => {
+  // README startup-validation claim end-to-end: "scheduler 间隔无法解析等都会在
+  // 启动时立刻报出可读错误并退出" — assertValidConfig runs before any check is
+  // spawned on every subcommand (bin/apm-watch.js cmdRun 169, cmdOnce 315,
+  // cmdExport 714, cmdServe 731), and main().catch() prints `[apm-watch] fatal:
+  // <message>` with exit 1 (752-758). A typo'd scheduler interval must abort the
+  // monitor instead of silently scanning at the default cadence.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'bad.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: 'http://127.0.0.1:1/', assert: { statusCode: 200 } }],
+    scheduler: { httpIntervalSeconds: 'every-so-often' },
+    store: { path: path.join(dir, 'bad.db') },
+  }));
+  const bad = await runOnce(cfg);
+  assert.equal(bad.code, 1, `expects exit 1\nstderr:\n${bad.stderr}`);
+  assert.match(bad.stderr, /\[apm-watch\] fatal: invalid config:/, 'one-line fatal opens the config error');
+  assert.match(bad.stderr, /config\.scheduler\.httpIntervalSeconds must be a positive number of seconds/, 'per-key message names the culprit');
+  assert.doesNotMatch(bad.stderr, /at (cmdOnce|main)/, 'no raw stack trace dumped');
+  // --json must not mask the boot failure either
+  const badJson = await runOnceJson(cfg);
+  assert.equal(badJson.code, 1, `json variant expects exit 1\nstderr:\n${badJson.stderr}`);
+  assert.match(badJson.stderr, /\[apm-watch\] fatal: invalid config:/);
+});

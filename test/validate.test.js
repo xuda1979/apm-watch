@@ -201,6 +201,32 @@ test('validate: non-object section is caught', () => {
   assert.match(errs.join('\n'), /config\.scheduler must be an object/);
 });
 
+test('validate: unparseable scheduler interval values are rejected per key', () => {
+  // README startup-validation claim: "scheduler 间隔无法解析等都会在启动时立刻
+  // 报出可读错误并退出". The scheduler loop (validate.js 79-88) rejects each of
+  // the three cadences independently with a curated per-key error — a typo would
+  // otherwise silently run http/tls/apm scans at the 30s floor. Only the
+  // non-object "scheduler: 'daily'" branch had a test before.
+  for (const key of ['httpIntervalSeconds', 'tlsIntervalSeconds', 'apmIntervalSeconds']) {
+    for (const v of [0, -1, -30, 'every-so-often', '5 x', '', NaN]) {
+      const errs = validateConfig({ http: [], tls: [], scheduler: { [key]: v } });
+      assert.match(
+        errs.join('\n'),
+        new RegExp(`config\\.scheduler\\.${key} must be a positive number of seconds \\(or a unit string like "5m"\\)`),
+        `scheduler.${key}=${JSON.stringify(v)} must be rejected`,
+      );
+    }
+  }
+  // boundaries that resolve to a positive number of seconds stay accepted
+  for (const v of [1, 60, 300, '5s', '45s', '5m', '1h', '2d', 0.25]) {
+    assert.deepEqual(
+      validateConfig({ http: [], tls: [], scheduler: { httpIntervalSeconds: v, tlsIntervalSeconds: v, apmIntervalSeconds: v } }),
+      [],
+      `scheduler intervals=${JSON.stringify(v)} must be accepted`,
+    );
+  }
+});
+
 test('validate: non-object notifications/ui/store sections are caught', () => {
   for (const key of ['notifications', 'ui', 'store']) {
     // typeof guard is `!= null`, so a bare string (not null/undefined) is the
