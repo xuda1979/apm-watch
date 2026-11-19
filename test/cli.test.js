@@ -912,6 +912,36 @@ test('cli: export --out file.htm writes the same self-contained page (format sel
   assert.match(html, /overall ok/);
 });
 
+test('cli: export --out FILE with no extension resolves to the base JSON form', async (t) => {
+  // README:60 documents `export [--config FILE] [--out FILE]` with an arbitrary
+  // FILE token, and README:42-43 frames the JSON snapshot as export's base form.
+  // The HTML widening at bin/apm-watch.js:722-723 only triggers on a `.html` /
+  // `.htm` suffix, so a path like `snapshot` must land on the JSON branch —
+  // anything else would surprise scripts exporting to a fixed extension-less
+  // name (e.g. a status endpoint that appends its own format).
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'exp.json');
+  const outFile = path.join(dir, 'snapshot');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    store: { path: path.join(dir, 'exp.db') },
+  }));
+  const seeded = await runOnce(cfg);
+  assert.equal(seeded.code, 0, `seed once failed:\n${seeded.stderr}`);
+  const { code, stdout } = await runCli('export', '--config', cfg, '--out', outFile);
+  assert.equal(code, 0);
+  assert.match(stdout, /wrote .*snapshot \(json\)/, 'an extension-less out is reported as json format');
+  const { readFileSync } = await import('node:fs');
+  const written = JSON.parse(readFileSync(outFile, 'utf8'));
+  assert.equal(written.summary.overall, 'ok', 'the file holds a parseable JSON snapshot, not a page');
+  assert.equal(written.targets[0].target, 'ok-svc');
+  assert.equal(written.apm_watch_version, '1.0.0');
+});
+
 test('cli: top-level fatal prints a one-line message, no raw stack dump', async () => {
   // `export --out /nonexistent-dir/x.json` and other boot-time failures must
   // surface a readable one-line error (cron/CI clean stderr), not a full
