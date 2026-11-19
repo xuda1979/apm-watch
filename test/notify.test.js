@@ -75,6 +75,18 @@ test('notify: webhook times out against a stalled receiver', async () => {
   assert.match(res.error, /timeout/);
 });
 
+test('notify: webhook rejection that is not an Error resolves through the String(err) fallback', async () => {
+  // catch (err) -> { ok:false, error: err.message || String(err) }: the abort
+  // and network-reject tests above all reject with Error objects carrying a
+  // message, so the `|| String(err)` half never fires. A bare non-Error
+  // rejection must resolve through that fallback, never throw on err.message.
+  const res = await webhookNotification('http://127.0.0.1:1/hook', { a: 1 }, {
+    fetchFn: () => Promise.reject('connect boom'),
+  });
+  assert.equal(res.ok, false);
+  assert.equal(res.error, 'connect boom');
+});
+
 test('notify: desktop notification spawns notify-send and resolves ok on exit 0', async () => {
   const { spawnFn, calls } = fakeSpawn();
   const p = desktopNotification({ title: 't', message: 'm', urgency: 'critical' }, { spawnFn });
