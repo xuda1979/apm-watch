@@ -471,3 +471,17 @@ test('export: renderStatusPage falls back on hand-built rows without availabilit
   const html2 = renderStatusPage({ ...base, notifications: {} });
   assert.match(html2, /notif none/, 'all-off channels render as none');
 });
+
+test('export: renderStatusPage renders a non-finite uptime span as an em dash instead of crashing', () => {
+  // fmtDuration's non-finite guard rides the rendered page when a hand-built
+  // health block carries a non-numeric uptimeSince (NaN uptime math): the span
+  // degrades to '—' rather than throwing (public-face parity)
+  const html = renderStatusPage({
+    summary: { overall: 'ok', counts: { ok: 1 } },
+    health: { status: 'ok', uptimeSince: NaN, lastCheckAt: 5 },
+    targets: [{ target: 'api', http: { status: 'ok' }, tls: null, apm: null }],
+  });
+  assert.match(html, /monitor ok/, 'the health line still renders');
+  assert.match(html, /last check 1970/, 'the health span still renders the check time');
+  assert.match(html, /up —/, 'non-finite uptime degrades to the em dash');
+});
