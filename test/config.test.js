@@ -188,6 +188,31 @@ test('config: intervals above the scheduler maximum clamp down to 300s across re
     'scheduler-wide keys over the maximum all clamp down to 300s');
 });
 
+test('config: intervals below the scheduler minimum clamp up to 30s across resolver surfaces', () => {
+  // README:111 "无效的 scheduler 间隔会被自动钳制到 [30, 300]s" — the clamp-UP
+  // half. A sub-30 cadence would hammer targets at up to 3x the documented
+  // floor while web/export/once --json surfaced the raw configured value; the
+  // canonical resolver shared by ui-server/export/bin must raise it to
+  // MIN_INTERVAL_S just like engine.buildTasks does (engine.test.js pins that
+  // side only). The clamp-DOWN direction is pinned by the test above.
+  const out = httpIntervalSeconds({
+    http: [{ name: 'a', url: 'http://a', intervalSeconds: 5 }],
+    scheduler: { httpIntervalSeconds: '10s' },
+  });
+  assert.equal(out.a, 30, 'per-check numeric 5s clamps up to 30s');
+  const unit = httpIntervalSeconds({
+    http: [{ name: 'b', url: 'http://b', intervalSeconds: '10s' }],
+  });
+  assert.equal(unit.b, 30, 'per-check unit string "10s" clamps up to 30s');
+  const tlsOut = tlsIntervalSeconds({
+    tls: [{ name: 'api', host: 'api.example.com', intervalSeconds: '5s' }],
+  });
+  assert.equal(tlsOut.api, 30, 'tls unit string "5s" clamps up to 30s');
+  assert.deepEqual(schedulerIntervals({ scheduler: { httpIntervalSeconds: 15, tlsIntervalSeconds: '20s', apmIntervalSeconds: 10 } }),
+    { httpIntervalSeconds: 30, tlsIntervalSeconds: 30, apmIntervalSeconds: 30 },
+    'scheduler-wide keys under the minimum all clamp up to 30s');
+});
+
 test('config: unnamed targets are keyed by url (http) / host:port (tls)', () => {
   // The store-target key convention: http falls back to the url, tls to
   // host:port (443 default) when no name is configured.
