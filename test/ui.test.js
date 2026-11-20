@@ -145,6 +145,21 @@ test('ui: web server serves the page and a live-state JSON API with series', asy
   // used to drop it — the `· port N` cell mirrors the export page / once / TUI
   // annotations so socket cert rows show the endpoint probed)
   assert.match(html, /s\.port/);
+  // the status pill paints each row from a closed set of classes, so a foreign
+  // status word falls back to `unknown` instead of silently rendering as ok
+  // (README:145-146 documents the legend: ok-svc / missing-svc →green,
+  // cert-soon→yellow, hang-svc→red — the .pill color rules keep the ok/warn/
+  // error classes on those hues)
+  assert.match(html, /\$\{'ok warn error unknown'\.includes\(s\.status\) \? esc\(s\.status\) : 'unknown'\}/);
+  assert.match(html, /\.ok \{ background: #1f9d55/);
+  assert.match(html, /\.warn \{ background: #d97706/);
+  assert.match(html, /\.error \{ background: #dc2626/);
+  // the pillbox renders the snapshot per-status counts + overall from the same
+  // classes (inc 96 parity: the TUI/export/once count lines draw the same
+  // numbers) — ok/warn/error keys drive `.count` cells and the overall word
+  // rides an `unknown` pill
+  assert.match(html, /\$\('pillbox'\)\.innerHTML = \['ok','warn','error'\]/);
+  assert.match(html, /<span class="pill unknown">overall /);
 
   // JSON API
   const res = await fetch(`http://127.0.0.1:${port}/api/states`);
