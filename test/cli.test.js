@@ -415,6 +415,109 @@ test('cli: web mode ignores --apm-port (the collector rides the web UI server)',
   assert.equal(code, 0, 'web run with an inert --apm-port still stops cleanly');
 });
 
+test('cli: run with no --ui and no config ui.mode defaults to web UI (README:49 npm start)', async (t) => {
+  // cmdRun resolves the interface as `args.ui || config.ui?.mode || 'web'`
+  // (bin/apm-watch.js:177). Every other web test passes `--ui web` explicitly
+  // (and the TUI ones pass `--ui tui`), so the bare fallback — the exact
+  // `npm start # 默认 run（web UI）` path README:49 documents — is unpinned: a
+  // rename/removal of the `|| 'web'` literal would make the suite pass while
+  // leaving `npm start` with no UI at all. Also pass no --ui-port: line 178
+  // `args.uiPort !== undefined ? args.uiPort : config.ui?.port ?? 0` falls back
+  // to port 0, so the OS assigns an ephemeral port (none of cmdServe's 8787
+  // collision risk) and run reports it on stdout.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-default-web-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'default-web.json');
+  writeFileSync(cfg, JSON.stringify({
+    store: { path: path.join(dir, 'default-web.db') },
+    // validate.js rejects a config without checks or apm.collect, so enable
+    // collection: in web mode the collector rides the web UI server, which
+    // keeps the "no separate collector banner" assertion meaningful below.
+    apm: { collect: true },
+    // note: no ui section at all — neither mode, port, host nor history
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg], { cwd: path.dirname(BIN) });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => (stdout += d));
+  child.stderr.on('data', (d) => (stderr += d));
+  const port = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`run did not report a web UI port; stdout:\n${stdout}\nstderr:\n${stderr}`)), 8000);
+    child.stdout.on('data', () => {
+      const m = stdout.match(/web UI on http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) { clearTimeout(timer); resolve(Number(m[1])); }
+    });
+    child.once('error', reject);
+  });
+  t.after(() => child.kill('SIGTERM'));
+
+  // the defaulted web mode is a live UI, not just a banner: state serves
+  const states = await (await fetch(`http://127.0.0.1:${port}/api/states`)).json();
+  assert.ok(Array.isArray(states.states), `bare run serves /api/states on the defaulted web port ${port}`);
+  assert.ok(!/APM collector on/.test(stderr), 'web mode opens no separate collector banner');
+
+  const close = new Promise((res) => child.on('close', res));
+  child.kill('SIGTERM');
+  assert.equal(await close, 0, 'defaulted-web run stops cleanly on SIGTERM');
+});
+
+test('cli: config ui.mode "tui" drives run when --ui is absent (collector banner, no web UI)', async (t) => {
+  // The middle of cmdRun's resolution chain (bin/apm-watch.js:177 `args.ui ||
+  // config.ui?.mode || 'web'`): with --ui absent, config `ui: { mode: 'tui' }`
+  // picks the TUI branch — the APM collector banner surfaces on stderr and no
+  // web-UI banner appears on stdout. README:51 `node bin/apm-watch.js run
+  // --ui tui` proves the flag side end-to-end; the config side is validated at
+  // lib/validate.js:146 (`ui.mode` must be "web"|"tui") but never exercised:
+  // a dropped `config.ui?.mode` reading in cmdRun would silently boot web mode
+  // while every spawned web test still passes an explicit flag.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cfg-tui-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const probe = createNetServer();
+  const freePort = await new Promise((resolve, reject) => {
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => resolve(probe.address().port));
+  });
+  await new Promise((resolve) => probe.close(resolve));
+  const cfg = path.join(dir, 'cfg-tui.json');
+  writeFileSync(cfg, JSON.stringify({
+    apm: { collect: true, port: freePort },
+    ui: { mode: 'tui' },
+    store: { path: path.join(dir, 'cfg-tui.db') },
+  }));
+
+  const child = spawn(process.execPath, [BIN, 'run', '--config', cfg], { cwd: path.dirname(BIN) });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => (stdout += d));
+  child.stderr.on('data', (d) => (stderr += d));
+  let exited = null;
+  const exit = new Promise((resolve) => child.on('close', (code) => resolve(code)));
+  t.after(() => { if (child.exitCode === null && !exited) child.kill('SIGTERM'); });
+
+  await new Promise((resolve, reject) => {
+    const deadline = setTimeout(resolve, 5000);
+    const check = () => {
+      // Wait for the collector banner AND the clear-screen sequence: the banner
+      // fires from cmdRun before Tui.start() registers its SIGTERM/SIGINT
+      // handlers, and a SIGTERM in that early window hits default signal death.
+      if (/\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:\d+\/apm\/agent\/trace/.test(stderr)
+        && /\x1b\[2J/.test(stdout)) { clearTimeout(deadline); resolve(); }
+    };
+    child.stderr.on('data', check);
+    child.stdout.on('data', check);
+    child.on('error', reject);
+    child.on('close', () => { clearTimeout(deadline); resolve(); });
+  });
+  assert.match(stderr, /\[apm-watch\] APM collector on http:\/\/127\.0\.0\.1:\d+\/apm\/agent\/trace/, `config ui.mode=tui surfaces the TUI collector banner\nstderr:\n${stderr}`);
+  assert.doesNotMatch(stdout, /web UI on http:\/\//, `no web-UI banner: config ui.mode=tui picked the TUI branch\nstdout:\n${stdout}`);
+
+  child.kill('SIGTERM');
+  const code = await exit;
+  exited = true;
+  assert.equal(code, 0, 'config-driven TUI run stops cleanly on SIGTERM');
+});
+
 test('cli: once surfaces a pre-existing monitor up-span in hours (fmtDuration hour branch)', async (t) => {
   // fmtDuration's hour branch (bin/apm-watch.js) renders `2h 0m`-style up-spans.
   // A zero-check `once` (http: []) never calls engine.persistHealth(), so the
