@@ -150,3 +150,20 @@ test('store: states migration adds numeric columns to an old-schema database', (
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('store: opens a file database in WAL journal mode (README:35 node:sqlite WAL)', () => {
+  // README:35-38 documents "SQLite（`node:sqlite`，WAL）"; lib/store.js:57 runs
+  // `PRAGMA journal_mode = WAL;` (and :58 `synchronous = NORMAL`) on open.
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-wal-'));
+  const dbPath = path.join(dir, 'wal.db');
+  try {
+    const s = new Store(dbPath);
+    const j = s.db.prepare('PRAGMA journal_mode').get();
+    assert.equal(j.journal_mode, 'wal', 'README:35 claims SQLite WAL journaling');
+    const sync = s.db.prepare('PRAGMA synchronous').get();
+    assert.equal(sync.synchronous, 1, 'WAL store runs with synchronous NORMAL (store.js:58)');
+    s.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
