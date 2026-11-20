@@ -832,6 +832,12 @@ test('cli: once --json reports the configured http verb (POST) per check', async
   const { code, stdout } = await runOnceJson(cfg);
   assert.equal(code, 0, `stdout:\n${stdout}`);
   const doc = JSON.parse(stdout);
+  // README:65-66 documents the exit code by worst status with `0` for the all-ok
+  // run, carried both as the process exit code and as the `exit_code` field of
+  // the JSON document (inc-35 parity): the 1 (warn) and 2 (error) JSON-field
+  // cells are pinned elsewhere, but the all-ok 0 cell was never asserted on the
+  // document itself — only on the process exit code.
+  assert.equal(doc.exit_code, 0, 'all-ok runs write exit_code 0 into the once --json document');
   const r = doc.results.find((x) => x.target === 'submit-svc');
   assert.equal(r.status, 'ok');
   assert.equal(r.status_code, 201);
