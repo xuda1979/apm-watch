@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1765,4 +1765,35 @@ test('cli: serve without --port and without config.ui.port binds the 8787 defaul
   const close = new Promise((res) => child.on('close', res));
   child.kill('SIGTERM');
   assert.equal(await close, 0, 'serve exits 0 after SIGTERM (graceful teardown)');
+});
+
+test('cli: a store-less config resolves the README default store path apm-watch.db in the process cwd', async (t) => {
+  // README:104 shows `"store": { "path": "apm-watch.db", "retentionDays": 7 }`
+  // as the sample config value, and bin/apm-watch.js:148 `resolveStorePath`
+  // falls back to `path.join(process.cwd(), 'apm-watch.db')` when the config
+  // carries no store.path at all. Every other CLI test passes an explicit
+  // store.path, so a regression that drops the fallback (or resolves it against
+  // a different base directory) would sail through the suite green. The
+  // discriminator: spawn `once` in a scratch cwd with a config that has no
+  // store section and assert the default file actually materializes there.
+  const { startHttpServer: httpSrv } = await import('./helpers/fixtures.js');
+  const srv = await httpSrv({ '/ok': { status: 200, body: 'good' } });
+  t.after(srv.close);
+  const dir = mkdtempSync(path.join(tmpdir(), 'apmw-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const cfg = path.join(dir, 'default-store.json');
+  writeFileSync(cfg, JSON.stringify({
+    http: [{ name: 'ok-svc', url: srv.url + '/ok', assert: { statusCode: 200 } }],
+    notifications: { desktop: false },
+    // note: no store section at all — resolveStorePath must pick the default
+  }));
+  const child = spawn(process.execPath, [BIN, 'once', '--config', cfg], { cwd: dir });
+  let stderr = '';
+  child.stderr.on('data', (d) => (stderr += d));
+  const code = await new Promise((res) => child.on('close', res));
+  assert.equal(code, 0, `store-less once run exits 0\nstderr:\n${stderr}`);
+  assert.ok(
+    existsSync(path.join(dir, 'apm-watch.db')),
+    'the default store path apm-watch.db materializes in the process cwd (README:104 sample, bin/apm-watch.js:148)',
+  );
 });
